@@ -10,7 +10,7 @@ export default function App() {
           <Button
             title="Set value"
             onPress={async () => {
-              await ExpoLibxray.setValueAsync('Hello from JS!');
+              await ExpoLibxray.setValueAsync('from JS!');
             }}
           />
         </Group>
