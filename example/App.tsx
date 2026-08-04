@@ -13,42 +13,14 @@ export default function App() {
           <Button
             title="Set value"
             onPress={async () => {
-              const hasPermission = await ExpoLibxray.requestVpnPermission();
-
-              if (!hasPermission) {
-                setText('Подтвердите подключение в системном окне!');
-                return;
-              }
-
               const resp = await ExpoLibxray.convertShareLinksToXrayJson(
-                'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTptYnJUU2dWTTh6aFZRbTJDdDBtbGFR@10.0.2.2:1080#%F0%9F%9A%80%20Marz%20%28android-test%29%20%5BShadowsocks%20-%20tcp%5D'
+                'vless://bdbec06a-de1c-4fb0-8748-e865b33b4ac3@195.20.119.44:10808?security=none&type=tcp&headerType=&path=&host=#%F0%9F%9A%80%20Marz%20%28android-test%29%20%5BVLESS%20-%20tcp%5D'
               );
 
               const responseObj = JSON.parse(resp);
 
               if (responseObj.success && responseObj.data) {
                 const config = responseObj.data;
-
-                config.dns = {
-                  servers: ['8.8.8.8', '1.1.1.1'],
-                };
-
-                config.routing = {
-                  domainStrategy: 'IPIfNonMatch',
-                  rules: [
-                    {
-                      type: 'field',
-                      inboundTag: ['socks-in'],
-                      outboundTag: 'direct',
-                    },
-                    {
-                      type: 'field',
-                      network: 'udp',
-                      port: 53,
-                      outboundTag: 'direct',
-                    },
-                  ],
-                };
 
                 const result = await ExpoLibxray.runXrayFromJson(JSON.stringify(config));
                 setText(result);

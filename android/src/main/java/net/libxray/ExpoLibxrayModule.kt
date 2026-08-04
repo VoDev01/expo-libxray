@@ -5,31 +5,28 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
-import android.os.Build
 import java.io.File
 import hev.sockstun.TProxyService
 import android.content.Intent
 import android.net.VpnService
+import androidx.core.app.ActivityCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 
 class ExpoLibxrayModule : Module() {
+
+  companion object {
+    private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 10
+  }
+
   override fun definition() = ModuleDefinition {
     Name("ExpoLibxray")
 
     val json = Json { 
       ignoreUnknownKeys = true 
       encodeDefaults = true
-    }
-
-    AsyncFunction("requestVpnPermission") {
-    val activity = appContext.currentActivity ?: return@AsyncFunction false
-    val intent = VpnService.prepare(activity)
-    
-      if (intent != null) {
-          activity.startActivityForResult(intent, 1002)
-          false
-      } else {
-        true
-      }
     }
 
     AsyncFunction("convertShareLinksToXrayJson") { links: String ->
@@ -43,18 +40,35 @@ class ExpoLibxrayModule : Module() {
     AsyncFunction("runXrayFromJson") { configJson: String ->
       val context = appContext.reactContext ?: 
       return@AsyncFunction InvokeResponse(success = false, error = "No context.").toString()
+      val activity = appContext.currentActivity ?: 
+      return@AsyncFunction InvokeResponse(success = false, error = "No activity.").toString()
       
-      val intent = Intent(context, XrayVpnService::class.java).apply {
-          action = "START_VPN"
-          putExtra("CONFIG_JSON", configJson)
+      val vpnPermissionIntent = VpnService.prepare(activity)
+      
+      if (vpnPermissionIntent != null) {
+        activity.startActivityForResult(vpnPermissionIntent, 1002)
+      }
+
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATION_PERMISSION_REQUEST_CODE
+        )
+        
       }
       
+      val intent = Intent(context, XrayVpnService::class.java).apply {
+        action = "START_VPN"
+        putExtra("CONFIG_JSON", configJson)
+      }
+
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
           context.startForegroundService(intent)
       } else {
           context.startService(intent)
       }
-      
+
       return@AsyncFunction InvokeResponse(success = true).toString()
     }
 
