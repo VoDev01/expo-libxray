@@ -115,11 +115,6 @@ class XrayVpnService : VpnService() {
     }
 
     private fun startVpn(configJsonString: String) {
-        if(cachedConfigJsonString == null) {
-            val completeConfig = addSocksInboundToClientXrayConfig(this, configJsonString)
-            cachedConfigJsonString = completeConfig
-        }
-        
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Xray VPN Подключен")
@@ -136,43 +131,52 @@ class XrayVpnService : VpnService() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         )
 
+        if(cachedConfigJsonString == null) {
+            val completeConfig = addTUNInboundToClientXrayConfig(
+                context = this, 
+                initialConf = configJsonString
+            )
+            cachedConfigJsonString = completeConfig
+        }
+
         try {
-            val appName = getString(applicationInfo.labelRes) 
+            val appName = getString(applicationInfo.labelRes)
 
             val builder = Builder()
                 .setSession(appName)
                 .setMtu(1500)
-                .addAddress("10.0.0.2", 24)
-                .addRoute("0.0.0.0", 0)
+                .addAddress("172.19.0.1", 30)
+                .addRoute("0.0.0.0", 5)
+                .addRoute("8.0.0.0", 7)
+                .addRoute("11.0.0.0", 8)
+                .addRoute("12.0.0.0", 6)
                 .addDnsServer("8.8.8.8")
                 .addDisallowedApplication(packageName)
 
             vpnPfd = builder.establish()
-            
             val fd = vpnPfd!!.detachFd()
                 
             dialerController = AndroidDialerController(this)
-
             LibXray.registerDialerController(dialerController)
-            
-            dialerController!!.protectFd(fd.toLong())
 
             LibXray.setDNS(dialerController, "8.8.8.8:53")
 
             val targetFile = File(cacheDir, "tun2socks_embedded.yaml")
             
-            MainScope().launch(Dispatchers.Main) {
+            runBlocking {
                 copyAssetFile("tun2socks.yaml", targetFile)
             }
 
-            val isStarted = TProxyService.TProxyStartService(
-                targetFile.absolutePath, 
-                fd
-            )
+            // val isStarted = TProxyService.TProxyStartService(
+            //     targetFile.absolutePath, 
+            //     fd
+            // )
 
-            if (isStarted) {
+            //if (isStarted) {
                 registerNetworkCallback()
 
+                cachedConfigJsonString = setFd(cachedConfigJsonString!!, fd)
+                
                 val request = InvokeRequest(
                     method = XrayMethod.RUN_XRAY,
                     payload = RunXrayRequest(cachedConfigJsonString ?: throw Exception("Cached config is empty."))
@@ -184,10 +188,10 @@ class XrayVpnService : VpnService() {
                     throw Exception(responseObj.getString("error"))
 
                 Log.d("XrayVpnService", "Vpn started!")
-            } else {
-                Log.e("XrayVpnService", "Unable to start tun2socks.")
-                stopVpn()
-            }
+            //} else {
+            //    Log.e("XrayVpnService", "Unable to start tun2socks.")
+            //    stopVpn()
+            //}
         } catch (e: Exception) {
             Log.d("XrayVpnService", cachedConfigJsonString!!)
             Log.e("XrayVpnService", e.message ?: "Unknown error")
@@ -252,9 +256,13 @@ class XrayVpnService : VpnService() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        val targetFile = File(cacheDir, "tun2socks_embedded.yaml")
-        if (targetFile.exists()) {
-            targetFile.delete()
+        val socksConfig = File(cacheDir, "tun2socks_embedded.yaml")
+        if (socksConfig.exists()) {
+            socksConfig.delete()
+        }
+        val xrayLogs = File(this.filesDir, "xray_error.log")
+        if(xrayLogs.exists()) {
+            xrayLogs.delete()
         }
 
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
