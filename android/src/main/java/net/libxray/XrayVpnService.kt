@@ -1,5 +1,6 @@
 package net.libxray
 
+import android.util.Log
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -23,6 +24,8 @@ import java.io.InputStream
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.*
+import org.json.JSONArray
+import org.json.JSONObject
 
 class XrayVpnService : VpnService() {
 
@@ -112,7 +115,11 @@ class XrayVpnService : VpnService() {
     }
 
     private fun startVpn(configJsonString: String) {
-        cachedConfigJsonString = configJsonString
+        if(cachedConfigJsonString == null) {
+            val completeConfig = addSocksInboundToClientXrayConfig(this, configJsonString)
+            cachedConfigJsonString = completeConfig
+        }
+        
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Xray VPN Подключен")
@@ -152,7 +159,7 @@ class XrayVpnService : VpnService() {
 
             LibXray.setDNS(dialerController, "8.8.8.8:53")
 
-            /*val targetFile = File(cacheDir, "tun2socks_embedded.yaml")
+            val targetFile = File(cacheDir, "tun2socks_embedded.yaml")
             
             MainScope().launch(Dispatchers.Main) {
                 copyAssetFile("tun2socks.yaml", targetFile)
@@ -161,31 +168,30 @@ class XrayVpnService : VpnService() {
             val isStarted = TProxyService.TProxyStartService(
                 targetFile.absolutePath, 
                 fd
-            )*/
-            
-
-            //if (isStarted) {
-            registerNetworkCallback()
-
-            val request = InvokeRequest(
-                method = XrayMethod.RUN_XRAY,
-                payload = RunXrayRequest(configJsonString)
             )
-            LibXray.invoke(json.encodeToString(request))
 
-            android.util.Log.d("XrayVpnService", "Vpn started!")
-            /*} else {
-                android.util.Log.e("XrayVpnService", "Unable to start tun2socks")
+            if (isStarted) {
+                registerNetworkCallback()
+
+                val request = InvokeRequest(
+                    method = XrayMethod.RUN_XRAY,
+                    payload = RunXrayRequest(cachedConfigJsonString ?: throw Exception("Cached config is empty."))
+                )
+                val response = LibXray.invoke(json.encodeToString(request))
+                val responseObj = JSONObject(response)
+
+                if(responseObj.getBoolean("success") == false)
+                    throw Exception(responseObj.getString("error"))
+
+                Log.d("XrayVpnService", "Vpn started!")
+            } else {
+                Log.e("XrayVpnService", "Unable to start tun2socks.")
                 stopVpn()
-            } */
+            }
         } catch (e: Exception) {
-            android.util.Log.e("XrayVpnService", e.message ?: "Unknown error")
+            Log.d("XrayVpnService", cachedConfigJsonString!!)
+            Log.e("XrayVpnService", e.message ?: "Unknown error")
             stopVpn()
-        } finally {
-            vpnPfd?.close()
-            vpnPfd = null
-            dialerController = null
-            unregisterNetworkCallback()
         }
     }
 
@@ -210,7 +216,7 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    private fun unregisterConnectivityManager() {
+    private fun unregisterNetworkCallback() {
         try {
             if (connectivityManager != null && networkCallback != null) {
                 connectivityManager?.unregisterNetworkCallback(networkCallback!!)
@@ -224,14 +230,23 @@ class XrayVpnService : VpnService() {
     }
 
     private fun stopVpn() {
-        val stopRequest = InvokeRequest(
-            method = XrayMethod.STOP_XRAY,
-            payload = ""
-        )
-        LibXray.invoke(json.encodeToString(stopRequest))
-        LibXray.resetDNS()
+        try{
+            val stopRequest = InvokeRequest(
+                method = XrayMethod.STOP_XRAY,
+                payload = ""
+            )
+            val response = LibXray.invoke(json.encodeToString(stopRequest))
+            val responseObj = JSONObject(response)
 
-        /*try {
+            if(responseObj.getBoolean("success") == false)
+               throw Exception(responseObj.getString("error"))
+
+            LibXray.resetDNS()
+        } catch(e: Exception) {
+            Log.e("XrayVpnService", e.message ?: "Unknown error")
+        }
+
+        try {
             if (TProxyService.TProxyIsRunning()) {
                 TProxyService.TProxyStopService()
             }
@@ -240,13 +255,22 @@ class XrayVpnService : VpnService() {
         val targetFile = File(cacheDir, "tun2socks_embedded.yaml")
         if (targetFile.exists()) {
             targetFile.delete()
-        }*/
+        }
 
-        ServiceCompat.stopForeground(
-            this, 
-            STOP_FOREGROUND_REMOVE
-        )
-        stopSelf()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            vpnPfd?.close()
+            vpnPfd = null
+            dialerController = null
+            ServiceCompat.stopForeground(
+                this, 
+                STOP_FOREGROUND_REMOVE
+            )
+            unregisterNetworkCallback()
+
+            try { Builder().establish()?.close() } catch (ignored: Exception) {}
+
+            stopSelf()
+        }, 500)
     }
 
     private fun createNotificationChannel() {
@@ -263,7 +287,6 @@ class XrayVpnService : VpnService() {
 
     override fun onDestroy() {
         stopVpn()
-        unregisterNetworkCallback()
         super.onDestroy()
     }
 }

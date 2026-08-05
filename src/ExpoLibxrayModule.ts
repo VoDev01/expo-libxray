@@ -6,7 +6,6 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
   stopXray(): Promise<void>;
   getXrayState(): Promise<boolean>;
   pingXrayConfig(json: string): Promise<string>;
-  requestVpnPermission(): Promise<boolean>;
 }
 
 export default requireNativeModule<ExpoLibxrayModule>('ExpoLibxray');
