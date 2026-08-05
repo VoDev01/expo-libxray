@@ -14,7 +14,7 @@ export default function App() {
             title="Start"
             onPress={async () => {
               const resp = await ExpoLibxray.convertShareLinksToXrayJson(
-                'vless://bdbec06a-de1c-4fb0-8748-e865b33b4ac3@104.28.156.67:443?security=reality&type=tcp&headerType=&flow=xtls-rprx-vision&path=&host=microsoft.com&sni=microsoft.com&fp=chrome&pbk=c4GdV4kQeE1L8Un7i20At-6_7ba5X99FgDWhgOoiKi4&sid=595726f129092382#VLESS_tcp'
+                'vless://bdbec06a-de1c-4fb0-8748-e865b33b4ac3@104.28.156.67:4433?security=reality&type=tcp&headerType=&flow=xtls-rprx-vision&path=&host=microsoft.com&sni=microsoft.com&fp=chrome&pbk=c4GdV4kQeE1L8Un7i20At-6_7ba5X99FgDWhgOoiKi4&sid=#VLESS_tcp'
               );
               const responseObj = JSON.parse(resp);
 
