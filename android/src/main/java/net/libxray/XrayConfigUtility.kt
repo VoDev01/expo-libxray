@@ -36,6 +36,10 @@ fun addSocksInboundToClientXrayConfig(
     
     configureLogging(root, context)
 
+    configureEnv(root, context.filesDir.absolutePath)
+
+    configureDNS(root)
+
     val inboundsArray = JSONArray()
     val socksInbound = JSONObject().apply {
         put("tag", inboundTag)
@@ -86,6 +90,10 @@ fun addTUNInboundToClientXrayConfig(
     
     configureLogging(root, context)
 
+    configureEnv(root, context.filesDir.absolutePath)
+
+    configureDNS(root)
+
     val inboundsArray = JSONArray()
     val tunInbound = JSONObject().apply {
         put("tag", inboundTag)
@@ -112,7 +120,45 @@ fun addTUNInboundToClientXrayConfig(
         outboundAddress
     )
 
+    configureRouting(
+        root, 
+        inboundTag, 
+        outboundTag
+    )
+
     return root.toString()
+}
+
+private fun configureEnv(
+    root: JSONObject,
+    assetsDir: String
+) {
+     val env = if (root.has("env") && !root.isNull("env")) {
+        root.getJSONObject("env")
+    } else {
+        JSONObject()
+    }
+
+    env.put("v2ray.location.asset", assetsDir)
+    env.put("xray.location.asset", assetsDir)
+    
+    root.put("env", env)
+}
+
+private fun configureDNS(
+    root: JSONObject
+) {
+    val dnsBlock = JSONObject().apply {
+        put("hosts", JSONObject().apply{
+            put("domain-!ru", "8.8.8.8")
+        })
+        put("servers", JSONArray().apply{
+            put("8.8.8.8")
+            put("1.1.1.1")
+        })
+    }
+
+    root.put("dns", dnsBlock)
 }
 
 private fun configureLogging(
@@ -135,14 +181,26 @@ private fun configureRouting(
     network: String = "tcp,udp"
 ) {
     val routing = JSONObject().apply {
-        put("domainStrategy", "AsIs")
+        put("domainStrategy", "IPIfNonMatch")
         val rulesArray = JSONArray()
-        val mainRule = JSONObject().apply {
+        val foreignRule = JSONObject().apply {
             put("network", network)
             put("inboundTag", JSONArray().put(inboundTag))
             put("outboundTag", outboundTag) 
         }
-        rulesArray.put(mainRule)
+        val domesticRule = JSONObject().apply {
+            put("domain", JSONArray().put("geosite:ru-available-only-inside"))
+            put("outboundTag", "direct")
+        }
+        val adRule = JSONObject().apply {
+            put("domain", JSONArray().put("geosite:category-ads-all"))
+            put("outboundTag", "block")
+        }
+        rulesArray.apply {
+            put(adRule)
+            put(domesticRule)
+            put(foreignRule)
+        }
         put("rules", rulesArray)
     }
 
@@ -157,11 +215,11 @@ private fun configureOutbounds(
 ) {
     val outboundsArray = root.getJSONArray("outbounds")
     if (outboundsArray.length() > 0) {
-        val outbound = outboundsArray.getJSONObject(0)
-        outbound.put("sendThrough", sendThrough)
-        outbound.put("tag", outboundTag)
+        val proxyOutbound = outboundsArray.getJSONObject(0)
+        proxyOutbound.put("sendThrough", sendThrough)
+        proxyOutbound.put("tag", outboundTag)
 
-        val streamSettings = outbound.getJSONObject("streamSettings")
+        val streamSettings = proxyOutbound.getJSONObject("streamSettings")
         val realitySettings = streamSettings.getJSONObject("realitySettings")
 
         sanitizeOutboundRealitySettings(realitySettings)
@@ -169,13 +227,27 @@ private fun configureOutbounds(
         val shortId = realitySettings.getString("shortId")
 
         if(address != null) {
-            val settings = outbound.getJSONObject("settings")
+            val settings = proxyOutbound.getJSONObject("settings")
             settings.put("address", address)
-            outbound.put("settings", settings)
+            proxyOutbound.put("settings", settings)
         }
         
         streamSettings.put("realitySettings", realitySettings)
-        outbound.put("streamSettings", streamSettings)
+        proxyOutbound.put("streamSettings", streamSettings)
+
+        outboundsArray.put(
+            JSONObject().apply {
+                put("tag", "direct")
+                put("protocol", "freedom")
+            }
+        )
+        
+        outboundsArray.put(
+            JSONObject().apply {
+                put("tag", "block")
+                put("protocol", "blackhole")
+            }
+        )
     }
 
     root.put("outbounds", outboundsArray)

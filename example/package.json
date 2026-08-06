@@ -8,7 +8,9 @@
     "react-native": "0.86.2"
   },
   "devDependencies": {
+    "@expo/config-plugins": "^57.0.7",
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.9",
     "typescript": "~6.0.3"
   },
   "scripts": {
