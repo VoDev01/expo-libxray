@@ -23,7 +23,7 @@
       "permissions": [
         "INTERNET",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_SPECIAL_USE",
+        "FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
         "POST_NOTIFICATIONS",
         "ACCESS_NETWORK_STATE"
       ]

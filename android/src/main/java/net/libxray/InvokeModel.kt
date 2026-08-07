@@ -11,7 +11,7 @@ enum class XrayMethod {
     @SerialName("convertXrayJsonToShareLinks")
     CONVERT_JSON_TO_SHARE_LINKS,
 
-    @SerialName("runXrayFromJson")
+    @SerialName("runXray")
     RUN_XRAY,
 
     @SerialName("stopXray")
@@ -29,7 +29,7 @@ enum class XrayMethod {
 
 @Serializable
 data class InvokeRequest<T> (
-    val apiVersion: Int = 1,
+    val apiVersion: Int = 2,
     val method: XrayMethod,
     val payload: T
 )
@@ -58,7 +58,12 @@ data class InvokeResponse(
 
 @Serializable
 data class RunXrayRequest(
-    val configJSON: String
+    val xrayJson: String
+)
+
+@Serializable
+data class TestXrayRequest(
+    val xrayJson: String
 )
 
 @Serializable

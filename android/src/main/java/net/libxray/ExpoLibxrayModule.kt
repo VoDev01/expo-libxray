@@ -37,7 +37,7 @@ class ExpoLibxrayModule : Module() {
       return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
-    AsyncFunction("runXrayFromJson") { configJson: String ->
+    AsyncFunction("runXray") { configJson: String ->
       val context = appContext.reactContext ?: 
       return@AsyncFunction InvokeResponse(success = false, error = "No context.").toString()
       val activity = appContext.currentActivity ?: 
@@ -55,11 +55,11 @@ class ExpoLibxrayModule : Module() {
             arrayOf(Manifest.permission.POST_NOTIFICATIONS),
             NOTIFICATION_PERMISSION_REQUEST_CODE
         )
-        
+
+        return@AsyncFunction InvokeResponse(success = false, error = "No permission.").toString()
       }
       
       val intent = Intent(context, XrayVpnService::class.java).apply {
-        action = "START_VPN"
         putExtra("CONFIG_JSON", configJson)
       }
 
@@ -73,13 +73,12 @@ class ExpoLibxrayModule : Module() {
     }
 
     AsyncFunction("stopXray") {
-        val context = appContext.reactContext ?: 
-        return@AsyncFunction null
-        val intent = Intent(context, XrayVpnService::class.java).apply {
-            action = "STOP_VPN"
-        }
-        context.startService(intent)
-        return@AsyncFunction null
+      val context = appContext.reactContext ?: return@AsyncFunction false
+
+      val intent = Intent(context, XrayVpnService::class.java)
+      XrayVpnService.stopXray()
+
+      return@AsyncFunction context.stopService(intent)
     }
 
     AsyncFunction("getXrayState") {

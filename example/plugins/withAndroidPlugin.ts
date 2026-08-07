@@ -17,7 +17,7 @@ const withAndroidPlugin: ConfigPlugin = (config) => {
       $: {
         'android:name': 'net.libxray.XrayVpnService',
         'android:permission': 'android.permission.BIND_VPN_SERVICE',
-        'android:foregroundServiceType': 'specialUse',
+        'android:foregroundServiceType': 'systemExempted',
         'android:exported': 'false',
         'android:label': '@string/app_name',
       },
@@ -35,8 +35,8 @@ const withAndroidPlugin: ConfigPlugin = (config) => {
       'meta-data': [
         {
           $: {
-            'android:name': 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE',
-            'android:value': 'VPN',
+            'android:name': 'net.libxray.appservice.permission',
+            'android:value': 'VPN proxy core service powered by libXray',
           },
         },
       ],

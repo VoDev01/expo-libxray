@@ -84,7 +84,7 @@ fun addTUNInboundToClientXrayConfig(
     gateway: String = "172.19.0.2",
     dns: String = "8.8.8.8",
     sendThrough: String = "0.0.0.0",
-    outboundAddress: String? = "10.0.2.2"
+    outboundAddress: String? = null
 ): String {
     val root = JSONObject(initialConf)
     
