@@ -1,12 +1,19 @@
 package net.libxray
 
 import libXray.DialerController
+import android.net.VpnService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import android.util.Log
 
-class AndroidDialerController(private val vpnService: XrayVpnService) : DialerController {
-    
+class AndroidDialerController(private val vpnService: VpnService) : DialerController {
+
     override fun protectFd(fd: Long): Boolean {
         val socketFd = fd.toInt()
-        
-        return vpnService.protect(socketFd)
+        val resp = vpnService.protect(socketFd)
+        if (!resp) {
+            Log.e("XrayVpnService", "Failed to protect fd: $socketFd")
+        }
+        return resp
     }
 }

@@ -5,3 +5,7 @@ socks5:
   address: 127.0.0.1
   port: 10808
   udp: 'udp'
+misc:
+  log-file: stdout
+  log-level: debug
+  limit-nofile: 65535

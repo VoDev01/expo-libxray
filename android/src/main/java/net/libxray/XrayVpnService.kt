@@ -13,7 +13,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import android.content.pm.ServiceInfo
 import libXray.LibXray
 import libXray.DialerController
@@ -27,15 +26,15 @@ import kotlinx.coroutines.*
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 
 class XrayVpnService : VpnService() {
-    private val xrayDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    private var vpnJob = Job()
-    private val scope = CoroutineScope(Dispatchers.Main + vpnJob)
+    private val networkDispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
+    private val scope = CoroutineScope(networkDispatcher + SupervisorJob())
 
     private var vpnPfd: ParcelFileDescriptor? = null
-    private val NOTIFICATION_ID = 1001
-    private val CHANNEL_ID = "vpn_service_channel"
+    private val CHANNEL_ID = "xray_vpn_channel"
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -44,28 +43,34 @@ class XrayVpnService : VpnService() {
 
     private var cachedConfigJsonString: String? = null
 
+    private val vpnNetId = "172.16.0.0"
+    private val vpnPrefixIp = 16
+    private val mtu = 1500
+    private val allowedTrafficSubnet = arrayOf(
+        "1.0.0.0" to 8,
+        "11.0.0.0" to 8,
+        "12.0.0.0" to 6,
+        "128.0.0.0" to 3,
+        "160.0.0.0" to 5,
+        "172.32.0.0" to 11,
+        "172.64.0.0" to 10
+    )
+    private val dnsIp = "8.8.8.8"
+    private val dnsPort = "53"
+
+    private var isRunning = false
+
     companion object {
+        public val TAG = "XrayVpnService"
+        private val NOTIFICATION_ID = 102
         private val json = Json { 
             ignoreUnknownKeys = true 
             encodeDefaults = true
         }
-        public fun stopXray() {
-            val stopRequest = InvokeRequest(
-                method = XrayMethod.STOP_XRAY,
-                payload = ""
-            )
-            val response = LibXray.invoke(json.encodeToString(stopRequest))
-            val responseObj = JSONObject(response)
+    }
 
-            if(responseObj.getBoolean("success") == false)
-                Log.e("XrayVpnService", responseObj.getString("error"))
-
-            LibXray.resetDNS()
-                    
-            if (TProxyService.TProxyIsRunning()) {
-                TProxyService.TProxyStopService()
-            }
-        }
+    private fun logThread(name: String) {
+        Log.d(TAG, "$name running on ${Thread.currentThread().name}")
     }
 
     private fun registerNetworkCallback() {
@@ -108,113 +113,168 @@ class XrayVpnService : VpnService() {
         try {
             connectivityManager?.registerNetworkCallback(request, networkCallback!!)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, e.message ?: "Unknown error")
         }
     }
 
-    private suspend fun handleNetworkChange(): Unit = withContext(Dispatchers.IO) {
+    private fun handleNetworkChange() {
         try {
-            stopSelf()
-
-            if(!cachedConfigJsonString.isNullOrBlank())
-                startVpn(cachedConfigJsonString!!)
-
+            stopXray()
+            if(cachedConfigJsonString != null) {
+                createForegroundNotification(NOTIFICATION_ID)
+                registerNetworkCallback()
+                scope.launch {
+                    startVpn(cachedConfigJsonString!!)
+                }
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, e.message ?: "Unknown error")
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (vpnPfd != null) return 0
-        if (intent == null) return 0
+        if (intent == null) return START_NOT_STICKY
 
         val action = intent?.action
-        
-        val configJson = intent.getStringExtra("CONFIG_JSON") ?: ""
-        startVpn(configJson)
 
-        return START_NOT_STICKY 
+        return when(action) {
+            "START_VPN" -> {
+                if(isRunning) START_STICKY
+                else {
+                    val configJson = intent.getStringExtra("CONFIG_JSON") ?: ""
+                    createForegroundNotification(NOTIFICATION_ID)
+                    registerNetworkCallback()
+
+                    scope.launch {
+                        startVpn(configJson)
+                    }
+
+                    START_STICKY
+                }
+            }
+            "STOP_VPN" -> {
+                logThread("VpnService stopping")
+                if(isRunning)
+                    stopXray()
+                START_NOT_STICKY
+            }
+            else -> START_NOT_STICKY
+        }
     }
 
-    private fun startVpn(configJsonString: String) {
-        scope.launch {
+    private suspend fun startVpn(configJson: String) {
+        try {
+            val builder = Builder()
+                .setSession(TAG)
+                .setMtu(mtu)
+                .addAddress(vpnNetId, vpnPrefixIp)
+                .addDnsServer(dnsIp)
+                .addDisallowedApplication(this.packageName)
+
+            for (subnet in allowedTrafficSubnet) {
+                builder.addRoute(subnet.first, subnet.second)
+            }
+
+            vpnPfd = builder.establish()
+            vpnPfd?.let { pfd ->
+                prepareProxy(configJson)
+                startProxy(pfd.getFd())
+            }
+
+            Log.d(TAG, "Vpn started!")
+        } catch (e: Exception) {
+            Log.e(TAG, e.message ?: "Unknown error")
+            stopXray()
+        }
+    }
+
+    private fun createForegroundNotification(serviceId: Int) {
+        createNotificationChannel()
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Xray VPN Подключен")
+            .setContentText("Защищенный туннель активен")
+            .setSmallIcon(android.R.drawable.ic_menu_share)
+            .setOngoing(true)
+            .build()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(serviceId, notification)
+        } else {
+            startForeground(
+                serviceId, 
+                notification, 
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+            )
+        }
+    }
+
+    private fun prepareProxy(configJson: String) {
+        try {
             if(cachedConfigJsonString == null) {
                 val completeConfig = addSocksInboundToClientXrayConfig(
-                    context = this@XrayVpnService, 
-                    initialConf = configJsonString
+                    context = this, 
+                    initialConf = configJson,
+                    logLevel = "debug"
                 )
                 cachedConfigJsonString = completeConfig
             }
-            try {
-                withContext(xrayDispatcher) {
-                    val appName = getString(applicationInfo.labelRes)
-                    val builder = Builder()
-                        .setSession(appName)
-                        .setMtu(1500)
-                        .addAddress("172.19.0.1", 30)
-                        .addRoute("0.0.0.0", 5)
-                        .addRoute("8.0.0.0", 7)
-                        .addRoute("11.0.0.0", 8)
-                        .addRoute("12.0.0.0", 6)
-                        .addDnsServer("8.8.8.8")
-                        .addDisallowedApplication(packageName)
-                    this@XrayVpnService.vpnPfd = builder.establish()
-                    val fd = vpnPfd!!.detachFd()
-                        
-                    dialerController = AndroidDialerController(this@XrayVpnService)
-                    dialerController!!.protectFd(fd.toLong())
-                    LibXray.registerDialerController(dialerController)
-                    LibXray.setDNS(dialerController, "8.8.8.8:53")
+            val socksConf = File(this.filesDir.absolutePath, "tun2socks.yaml")
+            val geosite = File(this.filesDir.absolutePath, "geosite.dat")
+            val geoip = File(this.filesDir.absolutePath, "geoip.dat")
+            
+            runBlocking {
+                if(!socksConf.exists())
+                    copyAssetFile("tun2socks.yaml", socksConf)
+                if(!geosite.exists())
+                    copyAssetFile("geosite.dat", geosite)
+                if(!geoip.exists())
+                    copyAssetFile("geoip.dat", geoip)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, e.message ?: "Unknown error.")
+        }
+    }
 
-                    val socksConf = File(this@XrayVpnService.filesDir.absolutePath, "tun2socks.yaml")
-                    val geosite = File(this@XrayVpnService.filesDir.absolutePath, "geosite.dat")
-                    val geoip = File(this@XrayVpnService.filesDir.absolutePath, "geoip.dat")
-                    
-                    runBlocking {
-                        copyAssetFile("tun2socks.yaml", socksConf)
-                        copyAssetFile("geosite.dat", geosite)
-                        copyAssetFile("geoip.dat", geoip)
-                    }
-                    registerNetworkCallback()
-                    cachedConfigJsonString = setFd(cachedConfigJsonString!!, fd)
-                    
-                    createNotificationChannel()
-                    val notification = NotificationCompat.Builder(this@XrayVpnService, CHANNEL_ID)
-                        .setContentTitle("Xray VPN Подключен")
-                        .setContentText("Защищенный туннель активен")
-                        .setSmallIcon(android.R.drawable.ic_menu_share)
-                        .setOngoing(true)
-                        .setPriority(NotificationCompat.PRIORITY_LOW)
-                        .build()
-                    ServiceCompat.startForeground(
-                        this@XrayVpnService,
-                        NOTIFICATION_ID, 
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
-                    )
-
-                    if(!TProxyService.TProxyIsRunning())
-                    {
+    private suspend fun startProxy(fd: Int) {
+        try {
+            if(!TProxyService.TProxyIsRunning())
+            {
+                scope.launch {
+                    try {
+                        logThread("Starting tun2socks")
                         val socksConf = File(this@XrayVpnService.filesDir, "tun2socks.yaml")
                         TProxyService.TProxyStartService(socksConf.absolutePath, fd)
+                    } catch (e: Exception) {
+                        Log.e(TAG, e.message ?: "Unknown error")
+                        stopXray()
                     }
-
-                    val request = InvokeRequest(
-                        method = XrayMethod.RUN_XRAY,
-                        payload = RunXrayRequest(cachedConfigJsonString ?: throw Exception("Cached config is empty."))
-                    )
-                    val response = LibXray.invoke(json.encodeToString(request))
-                    val responseObj = JSONObject(response)
-
-                    if(responseObj.getBoolean("success") == false) throw Exception(responseObj.getString("error"))
-
-                    Log.d("XrayVpnService", "Vpn started!")
                 }
-            } catch (e: Exception) {
-                Log.d("XrayVpnService", cachedConfigJsonString!!)
-                Log.e("XrayVpnService", e.message ?: "Unknown error")
-                stopSelf()
             }
+
+            logThread("Starting xray")
+            if(cachedConfigJsonString == null) throw Exception("Unable to start xray: config null.")
+                            
+            dialerController = AndroidDialerController(this)
+
+            LibXray.registerDialerController(dialerController)
+            LibXray.setDNS(dialerController, "$dnsIp:$dnsPort")
+
+            cachedConfigJsonString = setFd(cachedConfigJsonString!!, fd)
+
+            val request = InvokeRequest(
+                method = XrayMethod.RUN_XRAY,
+                payload = RunXrayRequest(cachedConfigJsonString ?: throw Exception("Cached config is empty."))
+            )
+
+            val response = LibXray.invoke(json.encodeToString(request))
+            val responseObj = JSONObject(response)
+
+            if(responseObj.getBoolean("success") == false) throw Exception(responseObj.getString("error"))
+            else isRunning = true
+
+            Log.d(TAG, "Proxy started!")
+        } catch (e: Exception) {
+            Log.e(TAG, e.message ?: "Unknown error")
+            stopXray()
         }
     }
 
@@ -232,7 +292,7 @@ class XrayVpnService : VpnService() {
             }
             outputStream.flush()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, e.message ?: "Unknown error.")
         } finally {
             inputStream?.close()
             outputStream?.close()
@@ -245,7 +305,7 @@ class XrayVpnService : VpnService() {
                 connectivityManager?.unregisterNetworkCallback(networkCallback!!)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, e.message ?: "Unknown error.")
         } finally {
             networkCallback = null
             currentNetwork = null
@@ -264,32 +324,56 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    override fun onDestroy() {
+    private fun stopXray() {
+        Log.d(TAG, "stopXray start")
         try{
-            stopXray()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            unregisterNetworkCallback()
+            val stopRequest = InvokeRequest(
+                method = XrayMethod.STOP_XRAY,
+                payload = ""
+            )
+            val response = LibXray.invoke(json.encodeToString(stopRequest))
+            val responseObj = JSONObject(response)
+            Log.d(TAG, "LibXray.invoke stop responded")
 
-            scope.launch(Dispatchers.IO) {
-                val xrayLogs = File(this@XrayVpnService.filesDir, "xray_error.log")
-                if(xrayLogs.exists()) {
-                    xrayLogs.delete()
-                }
+            if(responseObj.getBoolean("success") == false)
+                Log.e(TAG, responseObj.getString("error"))
+
+            LibXray.resetDNS()
+                    
+            if (TProxyService.TProxyIsRunning()) {
+                TProxyService.TProxyStopService()
             }
 
-            this.vpnJob.complete()
-            this.xrayDispatcher.close()
+            Log.d(TAG, "socks proxy stopped")
 
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            Log.d(TAG, "stopForeground")
+            unregisterNetworkCallback()
+            Log.d(TAG, "unregisterNetworkCallback")
+
+            scope.launch {
+                val xrayLogs = File(this@XrayVpnService.filesDir, "xray.log")
+                if(xrayLogs.exists()) {
+                    xrayLogs.delete()
+                    Log.d(TAG, "xrayLog deleted")
+                }
+            }
         } catch(e: Exception) {
-            Log.e("XrayVpnService", e.message ?: "Unknown error")
+            Log.e(TAG, e.message ?: "Unknown error")
         } finally {
             dialerController = null
             vpnPfd?.close()
             vpnPfd = null
-        }
 
-        Log.d("XrayVpnService", "Vpn stopped!")
-    
+            cachedConfigJsonString = null
+            isRunning = false
+
+            stopSelf()
+        }
+    }
+
+    override fun onDestroy() {
+        networkDispatcher.close()
         super.onDestroy()
     }
 }

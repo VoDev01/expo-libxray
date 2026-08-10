@@ -24,8 +24,10 @@
         "INTERNET",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
+        "BIND_VPN_SERVICE",
         "POST_NOTIFICATIONS",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE"
       ]
     },
     "plugins": ["./plugins/withAndroidPlugin.ts", "./plugins/withAndroidAbiFilters.ts"],

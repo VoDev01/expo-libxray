@@ -3,23 +3,25 @@ package net.libxray
 import libXray.LibXray
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.Promise
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.io.File
 import hev.sockstun.TProxyService
 import android.content.Intent
 import android.net.VpnService
-import androidx.core.app.ActivityCompat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.ContextCompat
+import android.content.Context
 
 class ExpoLibxrayModule : Module() {
-
   companion object {
     private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 10
   }
+
+  private val context: Context
+    get() = appContext.reactContext?.applicationContext ?: throw Exception("No application context provided.")
 
   override fun definition() = ModuleDefinition {
     Name("ExpoLibxray")
@@ -37,48 +39,46 @@ class ExpoLibxrayModule : Module() {
       return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
-    AsyncFunction("runXray") { configJson: String ->
-      val context = appContext.reactContext ?: 
-      return@AsyncFunction InvokeResponse(success = false, error = "No context.").toString()
-      val activity = appContext.currentActivity ?: 
-      return@AsyncFunction InvokeResponse(success = false, error = "No activity.").toString()
-      
-      val vpnPermissionIntent = VpnService.prepare(activity)
-      
-      if (vpnPermissionIntent != null) {
-        activity.startActivityForResult(vpnPermissionIntent, 1002)
+
+    AsyncFunction("runXray") { configJson: String, promise: Promise ->
+      val activity = appContext.currentActivity
+
+      if(activity == null) {
+        promise.reject("ERR_NO_ACTIVITY", "No active android activity found.", null)
+        return@AsyncFunction
       }
 
-      if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-        ActivityCompat.requestPermissions(
-            activity,
-            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-            NOTIFICATION_PERMISSION_REQUEST_CODE
-        )
-
-        return@AsyncFunction InvokeResponse(success = false, error = "No permission.").toString()
-      }
-      
       val intent = Intent(context, XrayVpnService::class.java).apply {
         putExtra("CONFIG_JSON", configJson)
+        setAction("START_VPN")
+        setPackage(context.packageName)
       }
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-          context.startForegroundService(intent)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+          }
+      }
+
+      val vpnPermissionIntent = VpnService.prepare(activity)
+      if (vpnPermissionIntent != null) {
+        activity.startActivityForResult(vpnPermissionIntent, 1002)
+        promise.resolve(false)
       } else {
-          context.startService(intent)
+        context.startForegroundService(intent)
+        promise.resolve(true)
       }
 
-      return@AsyncFunction InvokeResponse(success = true).toString()
+      return@AsyncFunction
     }
 
     AsyncFunction("stopXray") {
-      val context = appContext.reactContext ?: return@AsyncFunction false
-
-      val intent = Intent(context, XrayVpnService::class.java)
-      XrayVpnService.stopXray()
-
-      return@AsyncFunction context.stopService(intent)
+      val intent = Intent(context, XrayVpnService::class.java).apply {
+        setAction("STOP_VPN")
+        setPackage(context.packageName)
+      }
+      context.startService(intent)
+      return@AsyncFunction true
     }
 
     AsyncFunction("getXrayState") {

@@ -30,11 +30,12 @@ fun addSocksInboundToClientXrayConfig(
     inboundTag: String = "SOCKS LOCAL",
     outboundTag: String = "VLESS TCP REALITY",
     address: String? = null,
-    sendThrough: String = "0.0.0.0"
+    sendThrough: String = "0.0.0.0",
+    logLevel: String = "none"
 ): String {
     val root = JSONObject(initialConf)
     
-    configureLogging(root, context)
+    configureLogging(root, context, logLevel)
 
     configureEnv(root, context.filesDir.absolutePath)
 
@@ -84,11 +85,12 @@ fun addTUNInboundToClientXrayConfig(
     gateway: String = "172.19.0.2",
     dns: String = "8.8.8.8",
     sendThrough: String = "0.0.0.0",
-    outboundAddress: String? = null
+    outboundAddress: String? = null,
+    logLevel: String = "none"
 ): String {
     val root = JSONObject(initialConf)
     
-    configureLogging(root, context)
+    configureLogging(root, context, logLevel)
 
     configureEnv(root, context.filesDir.absolutePath)
 
@@ -163,11 +165,12 @@ private fun configureDNS(
 
 private fun configureLogging(
     root: JSONObject,
-    context: Context
+    context: Context,
+    logLevel: String = "warning"
 ) {
     val logBlock = JSONObject().apply {
-        put("loglevel", "debug")
-        put("error", "${context.filesDir.absolutePath}/xray_error.log")
+        put("loglevel", logLevel)
+        put("error", "${context.filesDir.absolutePath}/xray.log")
         put("maskAddress", "half")
     }
 

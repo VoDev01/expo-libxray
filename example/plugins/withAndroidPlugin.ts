@@ -20,6 +20,7 @@ const withAndroidPlugin: ConfigPlugin = (config) => {
         'android:foregroundServiceType': 'systemExempted',
         'android:exported': 'false',
         'android:label': '@string/app_name',
+        'android:process': ':xray_vpn',
       },
       'intent-filter': [
         {
@@ -32,18 +33,10 @@ const withAndroidPlugin: ConfigPlugin = (config) => {
           ],
         },
       ],
-      'meta-data': [
-        {
-          $: {
-            'android:name': 'net.libxray.appservice.permission',
-            'android:value': 'VPN proxy core service powered by libXray',
-          },
-        },
-      ],
     };
 
     const exists = mainApplication.service.some(
-      (s: any) => s.$ && s.$['android:name'] === '.XrayVpnService'
+      (s: any) => s.$ && s.$['android:name'] === 'net.libxray.XrayVpnServicee'
     );
 
     if (!exists) {
