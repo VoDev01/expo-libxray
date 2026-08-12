@@ -1,6 +1,7 @@
-import ExpoLibxray from 'expo-libxray';
+import ExpoLibxray, { ExpoLibxrayXrayConfigBuilder } from 'expo-libxray';
 import { useState } from 'react';
 import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Paths } from 'expo-file-system';
 
 export default function App() {
   const [text, setText] = useState<string>('Hello world!');
@@ -34,15 +35,60 @@ export default function App() {
 
 async function startXray(setText: (text: string) => void) {
   try {
+    const appFilesDir = Paths.document;
     const resp = await ExpoLibxray.convertShareLinksToXrayJson(
       'vless://bdbec06a-de1c-4fb0-8748-e865b33b4ac3@195.20.119.44:4433?security=reality&type=tcp&headerType=&flow=xtls-rprx-vision&path=&host=microsoft.com&sni=microsoft.com&fp=chrome&pbk=c4GdV4kQeE1L8Un7i20At-6_7ba5X99FgDWhgOoiKi4&sid=#VLESS_tcp'
     );
     const responseObj = JSON.parse(resp);
 
     if (responseObj.success && responseObj.data) {
-      const config = responseObj.data;
+      const config = new ExpoLibxrayXrayConfigBuilder(responseObj.data)
+        .setLogging('debug')
+        .setEnv(appFilesDir.uri.replace('file://', ''))
+        .setInbound(() => {
+          return [
+            {
+              tag: 'SOCKS LOCAL',
+              listen: '127.0.0.1',
+              port: '10808',
+              protocol: 'socks',
+              settings: {
+                auth: 'noauth',
+                udp: true,
+                ip: '127.0.0.1',
+                userLevel: 0,
+              },
+            },
+          ];
+        }, 'SOCKS LOCAL')
+        .setOutbounds('VLESS TCP REALITY', 'vless', '0.0.0.0')
+        .setDns({ 'domain-!ru': '8.8.8.8' }, ['8.8.8.8', '1.1.1.1'])
+        .setRouting(
+          [
+            {
+              network: 'tcp, udp',
+              inboundTag: ['SOCKS LOCAL'],
+              outboundTag: 'VLESS TCP REALITY',
+              domain: [],
+            },
+            {
+              domain: ['geosite:ru-available-only-inside'],
+              outboundTag: 'direct',
+              network: '',
+              inboundTag: [],
+            },
+            {
+              domain: ['geosite:category-ads-all'],
+              outboundTag: 'block',
+              network: '',
+              inboundTag: [],
+            },
+          ],
+          'IpIfNonMatch'
+        )
+        .build();
 
-      const result = await ExpoLibxray.runXray(JSON.stringify(config));
+      const result = await ExpoLibxray.runXray(config);
       setText(result ? 'Success' : 'Fail');
     } else {
       setText(`Ошибка конвертации: ${responseObj.error}`);
