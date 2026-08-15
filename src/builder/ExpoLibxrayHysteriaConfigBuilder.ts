@@ -18,7 +18,7 @@ function cleanObject(obj: any): any {
   );
 }
 
-export default class ExpoLibxrayXrayConfigBuilder implements ExpoLibxrayOutboundsBuilderInterface {
+export default class ExpoLibxrayHysteriaConfigBuilder implements ExpoLibxrayOutboundsBuilderInterface {
   private initialConfig: Record<string, any> = {};
 
   constructor(initialConfig: Record<string, any>) {

@@ -1,4 +1,8 @@
-import ExpoLibxray, { ExpoLibxrayXrayConfigBuilder } from 'expo-libxray';
+import ExpoLibxray, {
+  ExpoLibxrayXrayConfigBuilder,
+  ExpoLibxrayHysteriaConfigBuilder,
+  ExpoLibxrayConfigBuilder,
+} from 'expo-libxray';
 import { useState } from 'react';
 import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Paths } from 'expo-file-system';
@@ -37,55 +41,91 @@ async function startXray(setText: (text: string) => void) {
   try {
     const appFilesDir = Paths.document;
     const resp = await ExpoLibxray.convertShareLinksToXrayJson(
-      'vless://bdbec06a-de1c-4fb0-8748-e865b33b4ac3@195.20.119.44:4433?security=reality&type=tcp&headerType=&flow=xtls-rprx-vision&path=&host=microsoft.com&sni=microsoft.com&fp=chrome&pbk=c4GdV4kQeE1L8Un7i20At-6_7ba5X99FgDWhgOoiKi4&sid=#VLESS_tcp'
+      'vless://2aa237f9-b6ae-4fd2-b84c-34b1c70860e6@45.137.42.1:8443?security=reality&type=tcp&headerType=&flow=xtls-rprx-vision&path=&host=cloudflare.com&sni=cloudflare.com&fp=chrome&pbk=zSq9yPlKXHUx6CF5ucRP5lCRuGIh-4rEv-2RCdgbbkw&sid=595726f129092382#VLESS_tcp'
     );
     const responseObj = JSON.parse(resp);
 
     if (responseObj.success && responseObj.data) {
-      const config = new ExpoLibxrayXrayConfigBuilder(responseObj.data)
+      const baseConfig = new ExpoLibxrayConfigBuilder(responseObj.data)
         .setLogging('debug')
         .setEnv(appFilesDir.uri.replace('file://', ''))
-        .setInbound(() => {
-          return [
-            {
-              tag: 'SOCKS LOCAL',
-              listen: '127.0.0.1',
-              port: '10808',
-              protocol: 'socks',
-              settings: {
-                auth: 'noauth',
-                udp: true,
-                ip: '127.0.0.1',
-                userLevel: 0,
-              },
+        .setInbound([
+          {
+            tag: 'SOCKS LOCAL',
+            listen: '127.0.0.1',
+            port: '10808',
+            protocol: 'socks',
+            settings: {
+              auth: 'noauth',
+              udp: true,
+              ip: '127.0.0.1',
+              userLevel: 0,
             },
-          ];
-        }, 'SOCKS LOCAL')
-        .setOutbounds('VLESS TCP REALITY', 'vless', '0.0.0.0')
-        .setDns({ 'domain-!ru': '8.8.8.8' }, ['8.8.8.8', '1.1.1.1'])
+            sniffing: {
+              enabled: true,
+              destOverride: ['http', 'tls', 'quic'],
+            },
+          },
+        ])
+        .setDns(
+          { 'domain-!ru': ['8.8.8.8', '1.1.1.1'] },
+          [
+            '8.8.8.8',
+            '1.1.1.1',
+            {
+              address: '8.8.8.8',
+              port: 53,
+              queryStrategy: 'UseIPv4',
+            },
+            {
+              address: '1.1.1.1',
+              port: 53,
+              queryStrategy: 'UseIPv4',
+            },
+          ],
+          'UseIPv4'
+        )
         .setRouting(
           [
             {
-              network: 'tcp, udp',
+              type: 'field',
+              network: 'tcp,udp',
               inboundTag: ['SOCKS LOCAL'],
               outboundTag: 'VLESS TCP REALITY',
-              domain: [],
             },
             {
-              domain: ['geosite:ru-available-only-inside'],
-              outboundTag: 'direct',
-              network: '',
-              inboundTag: [],
+              type: 'field',
+              inboundTag: ['SOCKS LOCAL'],
+              outboundTag: 'dns-out',
+              port: 53,
             },
             {
+              type: 'field',
               domain: ['geosite:category-ads-all'],
+              inboundTag: ['SOCKS LOCAL'],
               outboundTag: 'block',
-              network: '',
-              inboundTag: [],
+            },
+            {
+              type: 'field',
+              outboundTag: 'direct',
+              inboundTag: ['SOCKS LOCAL'],
+              protocol: ['bittorrent'],
+            },
+            {
+              type: 'field',
+              domain: ['geosite:ru-available-only-inside'],
+              inboundTag: ['SOCKS LOCAL'],
+              outboundTag: 'direct',
             },
           ],
-          'IpIfNonMatch'
+          'AsIs'
         )
+        .build();
+
+      const config = new ExpoLibxrayXrayConfigBuilder(baseConfig)
+        .setOutbounds('VLESS TCP REALITY', 'vless')
+        .buildWith(ExpoLibxrayHysteriaConfigBuilder)
+        .setOutbounds('HYSTERIA', 'hysteria')
         .build();
 
       const result = await ExpoLibxray.runXray(config);

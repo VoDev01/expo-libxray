@@ -47,15 +47,12 @@ class XrayVpnService : VpnService() {
     private val vpnPrefixIp = 16
     private val mtu = 1500
     private val allowedTrafficSubnet = arrayOf(
-        "1.0.0.0" to 8,
-        "11.0.0.0" to 8,
-        "12.0.0.0" to 6,
-        "128.0.0.0" to 3,
-        "160.0.0.0" to 5,
-        "172.32.0.0" to 11,
-        "172.64.0.0" to 10
+        "10.0.2.0" to 24,
+        "0.0.0.0" to 0
     )
-    private val dnsIp = "8.8.8.8"
+    private val dnsIps = arrayOf(
+        "8.8.8.8",
+    )
     private val dnsPort = "53"
 
     private var isRunning = false
@@ -168,11 +165,13 @@ class XrayVpnService : VpnService() {
                 .setSession(TAG)
                 .setMtu(mtu)
                 .addAddress(vpnNetId, vpnPrefixIp)
-                .addDnsServer(dnsIp)
                 .addDisallowedApplication(this.packageName)
 
             for (subnet in allowedTrafficSubnet) {
                 builder.addRoute(subnet.first, subnet.second)
+            }
+            for(dnsIp in dnsIps) {
+                builder.addDnsServer(dnsIp)
             }
 
             vpnPfd = builder.establish()
@@ -217,8 +216,7 @@ class XrayVpnService : VpnService() {
             val geoip = File(this.filesDir.absolutePath, "geoip.dat")
             
             runBlocking {
-                if(!socksConf.exists())
-                    copyAssetFile("tun2socks.yaml", socksConf)
+                copyAssetFile("tun2socks.yaml", socksConf)
                 if(!geosite.exists())
                     copyAssetFile("geosite.dat", geosite)
                 if(!geoip.exists())
@@ -252,8 +250,9 @@ class XrayVpnService : VpnService() {
                 dialerController = AndroidDialerController(this@XrayVpnService)
 
                 LibXray.registerDialerController(dialerController)
-                LibXray.setDNS(dialerController, "$dnsIp:$dnsPort")
-
+                for(dnsIp in dnsIps) {
+                    LibXray.setDNS(dialerController, "$dnsIp:$dnsPort")
+                }
                 cachedConfigJsonString = setFd(cachedConfigJsonString!!, fd)
 
                 val request = InvokeRequest(

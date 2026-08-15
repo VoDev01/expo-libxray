@@ -1,16 +1,8 @@
-export type ConfigRoutingRule = {
-  domain: string[];
-  inboundTag: string[];
-  outboundTag: string;
-  network: string;
-};
-
 export default interface ExpoLibxrayBuilderInterface {
-  setInbound(inbound: () => any, inboundTag: string): this;
+  setInbound(inbounds: any[]): this;
   setEnv(assetsDir: string): this;
-  setDns(hosts: Record<string, string>, servers: string[]): this;
+  setDns(hosts: Record<string, string | string[]>, servers: any[], queryStrategy?: string): this;
   setLogging(logLevel: string): this;
-  setRouting(routingRules: ConfigRoutingRule[], inboundTag: string, network: string): this;
-  setOutbounds(outboundTag: string, protocol: string, sendThrough: string): this;
-  build(): string;
+  setRouting(routingRules: Record<string, any>[], inboundTag: string, network: string): this;
+  build(): Record<string, any>;
 }
