@@ -26,10 +26,13 @@
   "author": "VoDev01 <vodev1405@gmail.com> (https://github.com/VoDev01)",
   "license": "MIT",
   "homepage": "https://github.com/VoDev01/expo-libxray#readme",
-  "dependencies": {},
+  "dependencies": {
+    "lodash": "^4.18.1"
+  },
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/jest": "^29.2.1",
+    "@types/lodash": "^4.17.25",
     "@types/react": "~19.1.1",
     "babel-preset-expo": "~55.0.8",
     "eslint": "~9.39.4",

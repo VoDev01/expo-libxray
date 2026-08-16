@@ -3,8 +3,5 @@
 export { default } from './ExpoLibxrayModule';
 export * from './ExpoLibxray.types';
 
-export { default as ExpoLibxrayBuilderInterface } from './builder/ExpoLibxrayBuilderInterface';
-export { default as ExpoLibxrayXrayConfigBuilder } from './builder/ExpoLibxrayXrayConfigBuilder';
-export { default as ExpoLibxrayHysteriaConfigBuilder } from './builder/ExpoLibxrayHysteriaConfigBuilder';
-export { default as ExpoLibxrayConfigBuilder } from './builder/ExpoLibxrayConfigBuilder';
-export { default as ExpoLibxrayOutboundsBuilderInterface } from './builder/ExpoLibxrayOutboundsBuilderInterface';
+export { default as LibxrayBuilderInterface } from './builder/LibxrayBuilderInterface';
+export { default as LibxrayConfigBuilder } from './builder/LibxrayConfigBuilder';
