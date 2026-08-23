@@ -1,4 +1,4 @@
-package net.libxray
+package net.libxray.service
 
 import android.util.Log
 import android.app.NotificationChannel
@@ -28,6 +28,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import net.libxray.model.*
+import net.libxray.workers.GeoWorkManager
+import java.util.concurrent.TimeUnit
+import androidx.work.*
+import androidx.work.multiprocess.RemoteWorkManager
+import kotlinx.coroutines.guava.await
+import net.libxray.workers.WorkManagerInitializationProvider
 
 class XrayVpnService : VpnService() {
     private val networkDispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
@@ -54,8 +61,10 @@ class XrayVpnService : VpnService() {
         "8.8.8.8",
     )
     private val dnsPort = "53"
-
     private var isRunning = false
+
+    private lateinit var geoWorkManager: GeoWorkManager
+    private lateinit var remoteWorkManager: RemoteWorkManager
 
     companion object {
         public val TAG = "XrayVpnService"
@@ -66,8 +75,16 @@ class XrayVpnService : VpnService() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+
+        WorkManagerInitializationProvider.initialize(this)
+        remoteWorkManager = RemoteWorkManager.getInstance(this)
+        geoWorkManager = GeoWorkManager(remoteWorkManager)
+    }
+
     private fun logThread(name: String) {
-        Log.d(TAG, "$name running on ${Thread.currentThread().name}")
+        Log.i(TAG, "$name is running on ${Thread.currentThread().name} thread")
     }
 
     private fun registerNetworkCallback() {
@@ -134,6 +151,19 @@ class XrayVpnService : VpnService() {
 
         val action = intent?.action
 
+        val geoIpFile = File(this.filesDir.absolutePath, "geoip.dat")
+        val geoSiteFile = File(this.filesDir.absolutePath, "geosite.dat")
+
+        val geoIpUrl = intent?.getStringExtra("GEOIP_URL") ?: 
+            "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat"
+        val geoSiteUrl = intent?.getStringExtra("GEOSITE_URL") ?: 
+            "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
+
+        val downloadEvery = intent?.getLongExtra("DOWNLOAD_EVERY", 1L) ?: 1L
+        val timeUnitStr = intent?.getStringExtra("TIME_UNIT")
+        val timeUnit = if(timeUnitStr == null) TimeUnit.HOURS else TimeUnit.valueOf(timeUnitStr)
+        val maxGeoAgeMillis = intent?.getLongExtra("MAX_GEO_AGE_MILLIS", 3600000L) ?: 3600000L
+
         return when(action) {
             "START_VPN" -> {
                 if(isRunning) START_STICKY
@@ -143,7 +173,53 @@ class XrayVpnService : VpnService() {
                     registerNetworkCallback()
 
                     scope.launch {
-                        startVpn(configJson)
+                        try {
+                            geoWorkManager.schedulePeriodicDownload(
+                                geoIpUrl = geoIpUrl,
+                                geoSiteUrl = geoSiteUrl,
+                                downloadEvery = downloadEvery,
+                                timeUnit = timeUnit,
+                                maxGeoAgeMillis = maxGeoAgeMillis
+                            )
+
+                            val scheduledWorkInfos = remoteWorkManager
+                                .getWorkInfos(WorkQuery.fromUniqueWorkNames("GeoFilesUpdate"))
+                                .await()
+
+                            if(scheduledWorkInfos != null) {
+                                val scheduledWorkInfo = scheduledWorkInfos.first()
+
+                                if (scheduledWorkInfo.state == WorkInfo.State.ENQUEUED || scheduledWorkInfo.state == WorkInfo.State.RUNNING) {
+                                    if (!geoIpFile.exists() && !geoSiteFile.exists()){
+                                        geoWorkManager.immediateUpdate(
+                                            geoIpUrl = geoIpUrl,
+                                            geoSiteUrl = geoSiteUrl,
+                                            maxGeoAgeMillis = maxGeoAgeMillis
+                                        )
+
+                                        val workInfos = remoteWorkManager
+                                            .getWorkInfos(WorkQuery.fromUniqueWorkNames("GeoFilesImmediateUpdate"))
+                                            .await()
+
+                                        if(workInfos != null) {
+                                            val workInfo = workInfos.first()
+                                            
+                                            if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                                                if (!geoIpFile.exists() && !geoSiteFile.exists()) 
+                                                    throw Exception("Failed to receive geo files.")
+                                            }
+                                            else if(workInfo.state == WorkInfo.State.FAILED) {
+                                                throw Exception("Worker ${workInfo.id} has failed. Message: ${workInfo.outputData}")
+                                            }
+                                        }
+                                    }
+
+                                    startVpn(configJson)
+                                }
+                            }
+                        } catch(e: Exception) {
+                            Log.e(TAG, e.message ?: "Uknown error")
+                        }
                     }
 
                     START_STICKY
@@ -180,7 +256,7 @@ class XrayVpnService : VpnService() {
                 startProxy(pfd.getFd())
             }
 
-            Log.d(TAG, "Vpn started!")
+            Log.i(TAG, "Vpn started!")
         } catch (e: Exception) {
             Log.e(TAG, e.message ?: "Unknown error")
             stopXray()
@@ -212,15 +288,9 @@ class XrayVpnService : VpnService() {
                 cachedConfigJsonString = configJson
             }
             val socksConf = File(this.filesDir.absolutePath, "tun2socks.yaml")
-            val geosite = File(this.filesDir.absolutePath, "geosite.dat")
-            val geoip = File(this.filesDir.absolutePath, "geoip.dat")
             
             runBlocking {
                 copyAssetFile("tun2socks.yaml", socksConf)
-                if(!geosite.exists())
-                    copyAssetFile("geosite.dat", geosite)
-                if(!geoip.exists())
-                    copyAssetFile("geoip.dat", geoip)
             }
         } catch (e: Exception) {
             Log.e(TAG, e.message ?: "Unknown error.")
@@ -257,7 +327,9 @@ class XrayVpnService : VpnService() {
 
                 val request = InvokeRequest(
                     method = XrayMethod.RUN_XRAY,
-                    payload = RunXrayRequest(cachedConfigJsonString ?: throw Exception("Cached config is empty."))
+                    payload = RunXrayInvokeRequest(
+                        cachedConfigJsonString ?: throw Exception("Cached config is empty.")
+                    )
                 )
 
                 val response = LibXray.invoke(json.encodeToString(request))
@@ -266,7 +338,7 @@ class XrayVpnService : VpnService() {
                 if(responseObj.getBoolean("success") == false) throw Exception(responseObj.getString("error"))
                 else isRunning = true
 
-                Log.d(TAG, "Proxy started!")
+                Log.i(TAG, "Proxy started!")
             } catch (e: Exception) {
                 Log.e(TAG, e.message ?: "Unknown error")
                 stopXray()
@@ -321,7 +393,7 @@ class XrayVpnService : VpnService() {
     }
 
     private fun stopXray() {
-        Log.d(TAG, "stopXray start")
+        Log.i(TAG, "stopXray start")
         try{
             val stopRequest = InvokeRequest(
                 method = XrayMethod.STOP_XRAY,
@@ -329,7 +401,7 @@ class XrayVpnService : VpnService() {
             )
             val response = LibXray.invoke(json.encodeToString(stopRequest))
             val responseObj = JSONObject(response)
-            Log.d(TAG, "LibXray.invoke stop responded")
+            Log.i(TAG, "LibXray.invoke stop responded")
 
             if(responseObj.getBoolean("success") == false)
                 Log.e(TAG, responseObj.getString("error"))
@@ -340,12 +412,12 @@ class XrayVpnService : VpnService() {
                 TProxyService.TProxyStopService()
             }
 
-            Log.d(TAG, "socks proxy stopped")
+            Log.i(TAG, "socks proxy stopped")
 
             stopForeground(STOP_FOREGROUND_REMOVE)
-            Log.d(TAG, "stopForeground")
+            Log.i(TAG, "stopForeground")
             unregisterNetworkCallback()
-            Log.d(TAG, "unregisterNetworkCallback")
+            Log.i(TAG, "unregisterNetworkCallback")
         } catch(e: Exception) {
             Log.e(TAG, e.message ?: "Unknown error")
         } finally {
@@ -365,3 +437,7 @@ class XrayVpnService : VpnService() {
         super.onDestroy()
     }
 }
+
+
+
+

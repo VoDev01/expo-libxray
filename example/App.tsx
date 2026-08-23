@@ -1,7 +1,16 @@
-import ExpoLibxray, { LibxrayConfigBuilder } from 'expo-libxray';
+import ExpoLibxray, {
+  LibxrayConfigBuilder,
+  PingBatchItem,
+  PingBatchRequest,
+  RunXrayRequest,
+  TimeUnit,
+} from 'expo-libxray';
 import { useState } from 'react';
 import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Paths } from 'expo-file-system';
+
+const xrayLink =
+  'vless://1ceed667-7895-4750-99aa-fe2d7dd91c8d@85.192.60.109:8443?encryption=none&extra=%7B%22mode%22%3A%22stream-up%22%2C%22xPaddingBytes%22%3A%22100-1000%22%7D&fp=chrome&host=dl.google.com&mode=stream-up&path=%2Fchrome%2Fupdate&pbk=Y_h7Eekek0kE78qYrlrhbotdEgsf2NgNer3TALAyXzM&security=reality&sid=ed11541a6dbfa616&sni=youtu.be&spx=%2Fe00230f58dd174f&type=xhttp&x_padding_bytes=100-1000#VLESS%20REALITY%20XHTTP-w8vou5sxlt';
 
 export default function App() {
   const [text, setText] = useState<string>('Hello world!');
@@ -20,9 +29,17 @@ export default function App() {
             }}
           />
           <Button
-            title="Start Hysteria v2"
+            title="Test Xray Config"
             onPress={() => {
-              startXrayHysteria((text) => {
+              testXrayConfig((text) => {
+                setText(text);
+              });
+            }}
+          />
+          <Button
+            title="Ping Batch"
+            onPress={() => {
+              pingBatch((text) => {
                 setText(text);
               });
             }}
@@ -41,219 +58,122 @@ export default function App() {
   );
 }
 
+function buildConfig(initConfig: string, appFilesDir: string) {
+  return new LibxrayConfigBuilder(initConfig)
+    .setLogging('debug')
+    .setEnv(appFilesDir)
+    .setInbounds([
+      {
+        tag: 'SOCKS LOCAL',
+        listen: '127.0.0.1',
+        port: '10808',
+        protocol: 'socks',
+        settings: {
+          auth: 'noauth',
+          udp: true,
+          ip: '127.0.0.1',
+          userLevel: 0,
+        },
+        sniffing: {
+          enabled: true,
+          destOverride: ['http', 'tls', 'quic'],
+        },
+      },
+    ])
+    .setOutbounds(
+      [
+        {
+          tag: 'VLESS TCP REALITY',
+          sendThrough: '0.0.0.0',
+          streamSettings: {
+            xhttpSettings: {
+              path: '/chrome/update',
+              mode: 'stream-up',
+              extra: {
+                xPaddingBytes: '100-1000',
+              },
+            },
+          },
+        },
+      ],
+      ['streamSettings.realitySettings.password', 'streamSettings.realitySettings.port']
+    )
+    .setDns(
+      { 'domain-!ru': ['8.8.8.8', '1.1.1.1'] },
+      [
+        '8.8.8.8',
+        '1.1.1.1',
+        {
+          address: '8.8.8.8',
+          port: 53,
+          queryStrategy: 'UseIPv4',
+        },
+        {
+          address: '1.1.1.1',
+          port: 53,
+          queryStrategy: 'UseIPv4',
+        },
+      ],
+      'UseIPv4'
+    )
+    .setRouting(
+      [
+        {
+          type: 'field',
+          network: 'tcp,udp',
+          inboundTag: ['SOCKS LOCAL'],
+          outboundTag: 'VLESS TCP REALITY',
+        },
+        {
+          type: 'field',
+          inboundTag: ['SOCKS LOCAL'],
+          outboundTag: 'dns-out',
+          port: 53,
+        },
+        {
+          type: 'field',
+          domain: ['geosite:category-ads-all'],
+          inboundTag: ['SOCKS LOCAL'],
+          outboundTag: 'block',
+        },
+        {
+          type: 'field',
+          outboundTag: 'direct',
+          inboundTag: ['SOCKS LOCAL'],
+          protocol: ['bittorrent'],
+        },
+        {
+          type: 'field',
+          domain: ['geosite:ru-available-only-inside'],
+          inboundTag: ['SOCKS LOCAL'],
+          outboundTag: 'direct',
+        },
+      ],
+      'AsIs'
+    )
+    .build();
+}
+
 async function startXrayVless(setText: (text: string) => void) {
   try {
     const appFilesDir = Paths.document;
-    const resp = await ExpoLibxray.convertShareLinksToXrayJson(
-      'vless://1ceed667-7895-4750-99aa-fe2d7dd91c8d@85.192.60.109:8443?encryption=none&extra=%7B%22mode%22%3A%22stream-up%22%2C%22xPaddingBytes%22%3A%22100-1000%22%7D&fp=chrome&host=dl.google.com&mode=stream-up&path=%2Fchrome%2Fupdate&pbk=Y_h7Eekek0kE78qYrlrhbotdEgsf2NgNer3TALAyXzM&security=reality&sid=ed11541a6dbfa616&sni=youtu.be&spx=%2Fe00230f58dd174f&type=xhttp&x_padding_bytes=100-1000#VLESS%20REALITY%20XHTTP-w8vou5sxlt'
-    );
+    const resp = await ExpoLibxray.convertShareLinksToXrayJson(xrayLink);
     const responseObj = JSON.parse(resp);
 
     if (responseObj.success && responseObj.data) {
-      const config = new LibxrayConfigBuilder(responseObj.data)
-        .setLogging('debug')
-        .setEnv(appFilesDir.uri.replace('file://', ''))
-        .setInbounds([
-          {
-            tag: 'SOCKS LOCAL',
-            listen: '127.0.0.1',
-            port: '10808',
-            protocol: 'socks',
-            settings: {
-              auth: 'noauth',
-              udp: true,
-              ip: '127.0.0.1',
-              userLevel: 0,
-            },
-            sniffing: {
-              enabled: true,
-              destOverride: ['http', 'tls', 'quic'],
-            },
-          },
-        ])
-        .setOutbounds(
-          [
-            {
-              tag: 'VLESS TCP REALITY',
-              sendThrough: '0.0.0.0',//responseObj.data.outbounds[0].settings.address,
-              streamSettings: {
-                xhttpSettings: {
-                  path: '/chrome/update',
-                  mode: 'stream-up',
-                  extra: {
-                    xPaddingBytes: '100-1000',
-                  },
-                },
-              }
-            },
-          ],
-          ['streamSettings.realitySettings.password', 'streamSettings.realitySettings.port']
-        )
-        .setDns(
-          { 'domain-!ru': ['8.8.8.8', '1.1.1.1'] },
-          [
-            '8.8.8.8',
-            '1.1.1.1',
-            {
-              address: '8.8.8.8',
-              port: 53,
-              queryStrategy: 'UseIPv4',
-            },
-            {
-              address: '1.1.1.1',
-              port: 53,
-              queryStrategy: 'UseIPv4',
-            },
-          ],
-          'UseIPv4'
-        )
-        .setRouting(
-          [
-            {
-              type: 'field',
-              network: 'tcp,udp',
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'VLESS TCP REALITY',
-            },
-            {
-              type: 'field',
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'dns-out',
-              port: 53,
-            },
-            {
-              type: 'field',
-              domain: ['geosite:category-ads-all'],
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'block',
-            },
-            {
-              type: 'field',
-              outboundTag: 'direct',
-              inboundTag: ['SOCKS LOCAL'],
-              protocol: ['bittorrent'],
-            },
-            {
-              type: 'field',
-              domain: ['geosite:ru-available-only-inside'],
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'direct',
-            },
-          ],
-          'AsIs'
-        )
-        .build();
+      const config = buildConfig(responseObj.data, appFilesDir.uri.replace('file://', ''));
 
-        console.log(config);
-
-      const result = await ExpoLibxray.runXray(config);
-      setText(result ? 'Connected with VLESS' : 'Fail');
-    } else {
-      setText(`Ошибка конвертации: ${responseObj.error}`);
-    }
-  } catch (error) {
-    setText(`Ошибка при запуске Xray: ${(error as Error).message}`);
-  }
-}
-
-async function startXrayHysteria(setText: (text: string) => void) {
-  try {
-    const appFilesDir = Paths.document;
-    const resp = await ExpoLibxray.convertShareLinksToXrayJson(
-      'hysteria2://de48b194280796967454bc2d58ae4b60@45.137.42.1:5678?sni=microsoft.com#Netherlands%20AEZA%20%5Bhysteria2%20-%20%3Cmissing%3E%5D'
-    );
-    const responseObj = JSON.parse(resp);
-
-    if (responseObj.success && responseObj.data) {
-      const config = new LibxrayConfigBuilder(responseObj.data)
-        .setLogging('debug')
-        .setEnv(appFilesDir.uri.replace('file://', ''))
-        .setInbounds([
-          {
-            tag: 'SOCKS LOCAL',
-            listen: '127.0.0.1',
-            port: '10808',
-            protocol: 'socks',
-            settings: {
-              auth: 'noauth',
-              udp: true,
-              ip: '127.0.0.1',
-              userLevel: 0,
-            },
-            sniffing: {
-              enabled: true,
-              destOverride: ['http', 'tls', 'quic'],
-            },
-          },
-        ])
-        .setOutbounds(
-          [
-            {
-              tag: 'HYSTERIA',
-              settings: {
-                address: '45.137.42.1',
-              },
-            },
-          ],
-          ['password', 'limitFallbackUpload', 'limitFallbackDownload']
-        )
-        .setDns(
-          { 'domain-!ru': ['8.8.8.8', '1.1.1.1'] },
-          [
-            '8.8.8.8',
-            '1.1.1.1',
-            {
-              address: '8.8.8.8',
-              port: 53,
-              queryStrategy: 'UseIPv4',
-            },
-            {
-              address: '1.1.1.1',
-              port: 53,
-              queryStrategy: 'UseIPv4',
-            },
-          ],
-          'UseIPv4'
-        )
-        .setRouting(
-          [
-            {
-              type: 'field',
-              network: 'tcp,udp',
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'VLESS TCP REALITY',
-            },
-            {
-              type: 'field',
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'dns-out',
-              port: 53,
-            },
-            {
-              type: 'field',
-              domain: ['geosite:category-ads-all'],
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'block',
-            },
-            {
-              type: 'field',
-              outboundTag: 'direct',
-              inboundTag: ['SOCKS LOCAL'],
-              protocol: ['bittorrent'],
-            },
-            {
-              type: 'field',
-              domain: ['geosite:ru-available-only-inside'],
-              inboundTag: ['SOCKS LOCAL'],
-              outboundTag: 'direct',
-            },
-          ],
-          'AsIs'
-        )
-        .build();
-
-      const result = await ExpoLibxray.runXray(config);
-      setText(result ? 'Connected with Hysteria v2' : 'Fail');
+      const result = await ExpoLibxray.runXray({
+        xrayJson: config,
+        geoIpUrl: undefined,
+        geoSiteUrl: undefined,
+        downloadEvery: 30n.toString(),
+        timeUnit: TimeUnit.SECONDS,
+        maxGeoAgeMillis: '30000',
+        vpnServiceErrorLocalized: undefined,
+        notificationErrorLocalized: undefined,
+      });
+      setText(result.success ? 'Connected with VLESS' : 'Fail');
     } else {
       setText(`Ошибка конвертации: ${responseObj.error}`);
     }
@@ -268,6 +188,55 @@ async function stopXray(setText: (text: string) => void) {
     setText(resp ? 'Stopping' : 'Fail');
   } catch (error) {
     setText(`Ошибка при остановке Xray: ${(error as Error).message}`);
+  }
+}
+
+async function testXrayConfig(setText: (text: string) => void) {
+  try {
+    const appFilesDir = Paths.document;
+    const resp = await ExpoLibxray.convertShareLinksToXrayJson(xrayLink);
+    const responseObj = JSON.parse(resp);
+
+    if (responseObj.success && responseObj.data) {
+      const config = buildConfig(responseObj.data, appFilesDir.uri.replace('file://', ''));
+
+      const result = await ExpoLibxray.testXray(config);
+      setText(!result.success ? (result.error ?? 'Uknown error') : 'Valid configuration');
+    } else {
+      setText(`Ошибка конвертации: ${responseObj.error}`);
+    }
+  } catch (error) {
+    setText(`Ошибка при запуске Xray: ${(error as Error).message}`);
+  }
+}
+
+async function pingBatch(setText: (text: string) => void) {
+  try {
+    const appFilesDir = Paths.document;
+    const resp = await ExpoLibxray.convertShareLinksToXrayJson(xrayLink);
+    const responseObj = JSON.parse(resp);
+
+    if (responseObj.success && responseObj.data) {
+      const config = buildConfig(responseObj.data, appFilesDir.uri.replace('file://', ''));
+
+      const batchRequest: PingBatchRequest = {
+        configs: [
+          {
+            xrayJson: config,
+            outboundTag: undefined,
+          },
+        ],
+        timeout: 5,
+        url: 'https://microsoft.com',
+      };
+
+      const result = await ExpoLibxray.pingBatch(batchRequest);
+      setText(result.results ? JSON.stringify(result.results[0]) : 'Empty response');
+    } else {
+      setText(`Ошибка конвертации: ${responseObj.error}`);
+    }
+  } catch (error) {
+    setText(`Ошибка при запуске Xray: ${(error as Error).message}`);
   }
 }
 

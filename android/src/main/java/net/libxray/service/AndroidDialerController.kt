@@ -1,4 +1,4 @@
-package net.libxray
+package net.libxray.service
 
 import libXray.DialerController
 import android.net.VpnService

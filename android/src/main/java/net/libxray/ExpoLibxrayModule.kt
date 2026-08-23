@@ -9,15 +9,24 @@ import kotlinx.serialization.encodeToString
 import java.io.File
 import hev.sockstun.TProxyService
 import android.content.Intent
+import android.app.Activity
 import android.net.VpnService
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.content.Context
+import net.libxray.service.XrayVpnService
+import net.libxray.model.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import androidx.work.*
+import net.libxray.workers.WorkManagerInitializationProvider
 
 class ExpoLibxrayModule : Module() {
+  private var vpnDeferred: CompletableDeferred<Boolean>? = null
   companion object {
-    private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 10
+    private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1010
+    private const val VPN_SERVICE_REQUEST_CODE = 1011
   }
 
   private val context: Context
@@ -31,6 +40,17 @@ class ExpoLibxrayModule : Module() {
       encodeDefaults = true
     }
 
+    OnCreate {
+      WorkManagerInitializationProvider.initialize(context)
+    }
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode == VPN_SERVICE_REQUEST_CODE) {
+        val isGranted = payload.resultCode == Activity.RESULT_OK
+        vpnDeferred?.complete(isGranted)
+      }
+    }
+
     AsyncFunction("convertShareLinksToXrayJson") { links: String ->
       val request = InvokeRequest(
         method = XrayMethod.CONVERT_SHARE_LINKS_TO_JSON,
@@ -40,36 +60,54 @@ class ExpoLibxrayModule : Module() {
     }
 
 
-    AsyncFunction("runXray") { configJson: String, promise: Promise ->
+    AsyncFunction("runXray") { request: RunXrayRequest ->
       val activity = appContext.currentActivity
 
       if(activity == null) {
-        promise.reject("ERR_NO_ACTIVITY", "No active android activity found.", null)
-        return@AsyncFunction
+        return@AsyncFunction RunXrayResponse(
+          success = false,
+          error = "No app activity found."
+        )
       }
 
       val intent = Intent(context, XrayVpnService::class.java).apply {
-        putExtra("CONFIG_JSON", configJson)
+        putExtra("CONFIG_JSON", request.xrayJson)
+        if(request.geoIpUrl != null) putExtra("GEOIP_URL", request.geoIpUrl)
+        if(request.geoSiteUrl != null) putExtra("GEOSITE_URL", request.geoSiteUrl)
+        if(request.downloadEvery != null) putExtra("DOWNLOAD_EVERY", request.downloadEvery.toLongOrNull())
+        if(request.timeUnit != null) putExtra("TIME_UNIT", request.timeUnit.value)
+        if(request.maxGeoAgeMillis != null) putExtra("MAX_GEO_AGE_MILLIS", request.maxGeoAgeMillis.toLongOrNull())
         setAction("START_VPN")
         setPackage(context.packageName)
       }
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-          if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+          activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+
+          var vpnPermissionIntent = VpnService.prepare(activity)
+          if (vpnPermissionIntent != null) {
+            vpnDeferred = CompletableDeferred()
+
+            activity.startActivityForResult(vpnPermissionIntent, VPN_SERVICE_REQUEST_CODE)
+
+            var vpnGranted = false
+            runBlocking {
+              vpnGranted = vpnDeferred!!.await()
+              vpnDeferred = null
+            }
+            if(!vpnGranted) {
+              return@AsyncFunction RunXrayResponse(
+                success = false,
+                error = request.vpnServiceErrorLocalized
+              )
+            }
           }
+        }
       }
 
-      val vpnPermissionIntent = VpnService.prepare(activity)
-      if (vpnPermissionIntent != null) {
-        activity.startActivityForResult(vpnPermissionIntent, 1002)
-        promise.resolve(false)
-      } else {
-        context.startForegroundService(intent)
-        promise.resolve(true)
-      }
-
-      return@AsyncFunction
+      context.startForegroundService(intent)
+      return@AsyncFunction RunXrayResponse(true, null)
     }
 
     AsyncFunction("stopXray") {
@@ -89,33 +127,41 @@ class ExpoLibxrayModule : Module() {
       return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
-    AsyncFunction("pingXrayConfig") { configJson: String ->
-      val tempConfigFile = File(appContext.reactContext?.cacheDir, "temp_ping_config.json")
-      try {
-        tempConfigFile.writeText(configJson)
+    AsyncFunction("testXray") { configJson: String ->
+      val request = InvokeRequest(
+        method = XrayMethod.TEST_XRAY,
+        payload = ConvertXrayJsonRequest(configJson)
+      )
+      val response = json.decodeFromString<TestXrayResponse>(LibXray.invoke(json.encodeToString(request)))
+      return@AsyncFunction response
+    }
 
-        val request = InvokeRequest(
-            method = XrayMethod.PING,
-            payload = PingRequest(
-                configPath = tempConfigFile.absolutePath,
-                timeout = 5,
-                url = "https://google.com",
-                proxy = "socks5://127.0.0.1:10808"
+    AsyncFunction("xrayVersion") {
+      val request = InvokeRequest(
+        method = XrayMethod.VERSION,
+        payload = ""
+      )
+      return@AsyncFunction LibXray.invoke(json.encodeToString(request))
+    }
+
+    AsyncFunction("pingBatch") { request: PingBatchRequest ->
+      if(request.configs.size > 5) {
+        return@AsyncFunction PingBatchResponse(
+          results = listOf(
+            PingBatchItemResponse(
+              success = false,
+              delay = 0L,
+              error = "Request should not contain more than 5 configurations."
             )
+          )
         )
-
-        return@AsyncFunction LibXray.invoke(json.encodeToString(request))
-      } catch (e: Exception) {
-        val err = InvokeResponse(
-          success = false,
-          error = e.message
-        )
-        return@AsyncFunction err.toString()
-      } finally {
-        if (tempConfigFile.exists()) {
-            tempConfigFile.delete()
-        }
       }
+      val request = InvokeRequest(
+        method = XrayMethod.PING_BATCH,
+        payload = request
+      )
+      val response = json.decodeFromString<InvokeResponse<PingBatchResponse>>(LibXray.invoke(json.encodeToString(request)))
+      return@AsyncFunction response?.data ?: PingBatchResponse(results = emptyList())
     }
   }
 }

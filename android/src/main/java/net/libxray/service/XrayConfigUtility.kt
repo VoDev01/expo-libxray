@@ -1,4 +1,4 @@
-package net.libxray
+package net.libxray.service
 
 import org.json.JSONArray
 import org.json.JSONObject
