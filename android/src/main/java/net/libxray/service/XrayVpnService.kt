@@ -1,10 +1,9 @@
 package net.libxray.service
 
 import android.util.Log
-import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.NotificationChannel
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -35,6 +34,11 @@ import androidx.work.*
 import androidx.work.multiprocess.RemoteWorkManager
 import kotlinx.coroutines.guava.await
 import net.libxray.workers.WorkManagerInitializationProvider
+import android.content.Intent
+import android.app.PendingIntent
+import android.os.IBinder
+import android.app.Notification
+import kotlin.collections.HashMap
 
 class XrayVpnService : VpnService() {
     private val networkDispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
@@ -65,6 +69,11 @@ class XrayVpnService : VpnService() {
 
     private lateinit var geoWorkManager: GeoWorkManager
     private lateinit var remoteWorkManager: RemoteWorkManager
+
+    private var appsSplitTunneling: Array<String>? = null
+    private var notificationStatuses: HashMap<String, String>? = null
+    private var notificationTitle: String = "VPN Connection"
+    private var notificationContent: String = "Status:"
 
     companion object {
         public val TAG = "XrayVpnService"
@@ -135,10 +144,10 @@ class XrayVpnService : VpnService() {
         try {
             stopXray()
             if(cachedConfigJsonString != null) {
-                createForegroundNotification(NOTIFICATION_ID)
+                updateNotification(NOTIFICATION_ID, "Network change...")
                 registerNetworkCallback()
                 scope.launch {
-                    startVpn(cachedConfigJsonString!!)
+                    startVpn(cachedConfigJsonString!!, appsSplitTunneling, notificationStatuses)
                 }
             }
         } catch (e: Exception) {
@@ -158,18 +167,34 @@ class XrayVpnService : VpnService() {
             "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat"
         val geoSiteUrl = intent?.getStringExtra("GEOSITE_URL") ?: 
             "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
-
         val downloadEvery = intent?.getLongExtra("DOWNLOAD_EVERY", 1L) ?: 1L
         val timeUnitStr = intent?.getStringExtra("TIME_UNIT")
         val timeUnit = if(timeUnitStr == null) TimeUnit.HOURS else TimeUnit.valueOf(timeUnitStr)
         val maxGeoAgeMillis = intent?.getLongExtra("MAX_GEO_AGE_MILLIS", 3600000L) ?: 3600000L
 
+        appsSplitTunneling = intent?.getStringArrayExtra("APPS_SPLIT_TUNNELING")
+        notificationTitle = intent?.getStringExtra("NOTIFICATION_TITLE") ?: "VPN Connection"
+        notificationContent = intent?.getStringExtra("NOTIFICATION_CONTENT") ?: "Status: "
+        notificationStatuses = intent?.getSerializableExtra("NOTIFICATION_STATUSES", HashMap::class.java) as? HashMap<String, String>
+        
         return when(action) {
             "START_VPN" -> {
                 if(isRunning) START_STICKY
                 else {
                     val configJson = intent.getStringExtra("CONFIG_JSON") ?: ""
-                    createForegroundNotification(NOTIFICATION_ID)
+                    val currentStatuses = notificationStatuses
+                    val waitingText = if (currentStatuses != null) {
+                        currentStatuses["waiting"] ?: "Waiting..."
+                    } else {
+                        "Waiting..."
+                    }
+
+                    updateNotification(
+                        NOTIFICATION_ID, 
+                        waitingText, 
+                        notificationTitle, 
+                        notificationContent
+                    )
                     registerNetworkCallback()
 
                     scope.launch {
@@ -214,7 +239,7 @@ class XrayVpnService : VpnService() {
                                         }
                                     }
 
-                                    startVpn(configJson)
+                                    startVpn(configJson, appsSplitTunneling, notificationStatuses)
                                 }
                             }
                         } catch(e: Exception) {
@@ -235,7 +260,7 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    private suspend fun startVpn(configJson: String) {
+    private suspend fun startVpn(configJson: String, appsSplitTunneling: Array<String>?, notificationStatuses: HashMap<String, String>?) {
         try {
             val builder = Builder()
                 .setSession(TAG)
@@ -249,11 +274,16 @@ class XrayVpnService : VpnService() {
             for(dnsIp in dnsIps) {
                 builder.addDnsServer(dnsIp)
             }
+            if(appsSplitTunneling !== null) {
+                for(appPackageName in appsSplitTunneling) {
+                    builder.addDisallowedApplication(appPackageName)
+                }
+            }
 
             vpnPfd = builder.establish()
             vpnPfd?.let { pfd ->
                 prepareProxy(configJson)
-                startProxy(pfd.getFd())
+                startProxy(pfd.getFd(), notificationStatuses)
             }
 
             Log.i(TAG, "Vpn started!")
@@ -263,14 +293,48 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    private fun createForegroundNotification(serviceId: Int) {
-        createNotificationChannel()
+
+    private fun updateNotification(
+        serviceId: Int, 
+        status: String = "Waiting...",
+        notificationTitle: String? = null, 
+        notificationContent: String? = null
+    ) {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "VPN Connection Status",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(channel)
+        
+        this.notificationTitle = notificationTitle ?: this.notificationTitle
+        this.notificationContent = notificationContent ?: this.notificationContent
+
+        val packageName = getPackageName();
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        launchIntent?.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+        val pendingIntent = if (launchIntent != null) {
+            PendingIntent.getActivity(
+                this, 
+                0, 
+                launchIntent, 
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Xray VPN Подключен")
-            .setContentText("Защищенный туннель активен")
+            .setContentTitle(this.notificationTitle)
+            .setContentText("${this.notificationContent} $status")
             .setSmallIcon(android.R.drawable.ic_menu_share)
+            .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
+
+        manager.notify(NOTIFICATION_ID, notification)
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(serviceId, notification)
         } else {
@@ -297,23 +361,16 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    private suspend fun startProxy(fd: Int) {
-        if(!TProxyService.TProxyIsRunning())
-        {
-            scope.launch {
-                try {
-                    logThread("Starting tun2socks")
-                    val socksConf = File(this@XrayVpnService.filesDir, "tun2socks.yaml")
-                    TProxyService.TProxyStartService(socksConf.absolutePath, fd)
-                } catch (e: Exception) {
-                    Log.e(TAG, e.message ?: "Unknown error")
-                    stopXray()
-                }
-            }
-        }
-        
+    private suspend fun startProxy(fd: Int, notificationStatuses: HashMap<String, String>?) {
         scope.launch {
             try {
+                sendVpnStatus("CONNECTING")
+                if(!TProxyService.TProxyIsRunning())
+                {
+                    logThread("Starting tun2socks")
+                    val socksConf = File(this@XrayVpnService.filesDir, "tun2socks.yaml")
+                    TProxyService.TProxyStartService(socksConf.absolutePath, fd)    
+                }
                 logThread("Starting xray")
                 if(cachedConfigJsonString == null) throw Exception("Unable to start xray: config null.")
                                 
@@ -339,11 +396,25 @@ class XrayVpnService : VpnService() {
                 else isRunning = true
 
                 Log.i(TAG, "Proxy started!")
+
+                updateNotification(NOTIFICATION_ID, notificationStatuses?.get("connected") ?: "Connected!")
+                sendVpnStatus("CONNECTED")
             } catch (e: Exception) {
                 Log.e(TAG, e.message ?: "Unknown error")
+                updateNotification(NOTIFICATION_ID, notificationStatuses?.get("error") ?: "Unable to establish connection")
+                sendVpnStatus("ERROR", e.message)
                 stopXray()
             }
         }
+    }
+
+    private fun sendVpnStatus(status: String, error: String? = null) {
+        val intent = Intent("net.libxray.VPN_STATUS").apply {
+            putExtra("status", status)
+            putExtra("error", error)
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
     }
 
     private suspend fun copyAssetFile(assetName: String, targetFile: File): Unit = withContext(Dispatchers.IO) {
@@ -380,20 +451,8 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "VPN Connection Status",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
-    }
-
     private fun stopXray() {
-        Log.i(TAG, "stopXray start")
+        Log.i(TAG, "stopXray called")
         try{
             val stopRequest = InvokeRequest(
                 method = XrayMethod.STOP_XRAY,
@@ -428,6 +487,8 @@ class XrayVpnService : VpnService() {
             cachedConfigJsonString = null
             isRunning = false
 
+            
+            sendVpnStatus("DISCONNECTED")
             stopSelf()
         }
     }

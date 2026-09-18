@@ -5,6 +5,7 @@ import kotlinx.serialization.SerialName
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import expo.modules.kotlin.types.Enumerable
+import kotlin.collections.HashMap
 
 @Serializable
 enum class JsTimeUnit(val value: String) : Enumerable {
@@ -92,9 +93,17 @@ data class RunXrayRequest(
     @Field
     val maxGeoAgeMillis: String?,
     @Field
+    val appsSplitTunneling: Array<String>?,
+    @Field
     val notificationErrorLocalized: String?,
     @Field
-    val vpnServiceErrorLocalized: String?
+    val vpnServiceErrorLocalized: String?,
+    @Field
+    val vpnServiceNotificationTitle: String?,
+    @Field
+    val vpnServiceNotificationContent: String?,
+    @Field
+    val vpnServiceNotificationStatuses: HashMap<String, String>?
 ) : Record
 
 @Serializable

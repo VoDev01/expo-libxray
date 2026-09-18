@@ -7,6 +7,11 @@ import {
   TestXrayResponse,
 } from './ExpoLibxray.types';
 
+export type VpnStatusEvent = {
+  status: 'CONNECTED' | 'CONNECTING' | 'ERROR' | 'DISCONNECTED';
+  error?: string;
+};
+
 /**
  * ExpoLibxrayModule is a native module for interacting with Xray.
  */
@@ -57,6 +62,11 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
    * @returns A promise that resolves to a string representing the Xray version.
    */
   xrayVersion(): Promise<string>;
+
+  addListener(
+    eventName: 'onVpnStatusChange',
+    listener: (event: VpnStatusEvent) => void
+  ): { remove: () => void };
 }
 
 export default requireNativeModule<ExpoLibxrayModule>('ExpoLibxray');

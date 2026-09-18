@@ -74,6 +74,10 @@ export interface RunXrayRequest {
    */
   maxGeoAgeMillis: string | undefined;
   /**
+   * Apps package names that need to bypass VPN tunnel
+   */
+  appsSplitTunneling: string[] | undefined;
+  /**
    * Localized error message for notification permission.
    */
   notificationErrorLocalized: string | undefined;
@@ -81,6 +85,18 @@ export interface RunXrayRequest {
    * Localized error message for VPN service permission.
    */
   vpnServiceErrorLocalized: string | undefined;
+  /**
+   * Notification title localized
+   */
+  vpnServiceNotificationTitle: string | undefined;
+  /**
+   * Notification text content localized
+   */
+  vpnServiceNotificationContent: string | undefined;
+  /**
+   * Notification localized text statuses of notification
+   */
+  vpnServiceNotificationStatus: Record<'waiting' | 'connected' | 'error', string> | undefined;
 }
 
 /**

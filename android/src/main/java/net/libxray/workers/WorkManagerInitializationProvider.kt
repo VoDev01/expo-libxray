@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import android.util.Log
+import android.os.Build
+import android.app.Application
 
 object WorkManagerInitializationProvider {
 
@@ -13,7 +15,13 @@ object WorkManagerInitializationProvider {
         val configBuilder = Configuration.Builder()
             .setMinimumLoggingLevel(Log.WARN)
 
-       configBuilder.setDefaultProcessName("$mainProcessName:xray_vpn")
+        val currentProcessName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Application.getProcessName()
+        } else {
+            context.packageName
+        }
+
+        configBuilder.setDefaultProcessName(currentProcessName)
 
         try {
             WorkManager.initialize(context, configBuilder.build())

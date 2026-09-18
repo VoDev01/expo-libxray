@@ -21,6 +21,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import androidx.work.*
 import net.libxray.workers.WorkManagerInitializationProvider
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
 
 class ExpoLibxrayModule : Module() {
   private var vpnDeferred: CompletableDeferred<Boolean>? = null
@@ -32,8 +34,23 @@ class ExpoLibxrayModule : Module() {
   private val context: Context
     get() = appContext.reactContext?.applicationContext ?: throw Exception("No application context provided.")
 
+  private val statusReceiver = object : BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: Intent) {
+          val status = intent.getStringExtra("status") ?: "UNKNOWN"
+          val error = intent.getStringExtra("error")
+          
+          sendEvent("onVpnStatusChange", mapOf(
+              "status" to status,
+              "error" to error
+          ))
+      }
+  }
+
+
   override fun definition() = ModuleDefinition {
     Name("ExpoLibxray")
+
+    Events("onVpnStatusChange")
 
     val json = Json { 
       ignoreUnknownKeys = true 
@@ -42,6 +59,17 @@ class ExpoLibxrayModule : Module() {
 
     OnCreate {
       WorkManagerInitializationProvider.initialize(context)
+
+      val filter = IntentFilter("net.libxray.VPN_STATUS")
+      context.registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    }
+
+    OnDestroy {
+        try {
+          context.unregisterReceiver(statusReceiver)
+        } catch (e: Exception) {
+          
+        }
     }
 
     OnActivityResult { _, payload ->
@@ -77,6 +105,10 @@ class ExpoLibxrayModule : Module() {
         if(request.downloadEvery != null) putExtra("DOWNLOAD_EVERY", request.downloadEvery.toLongOrNull())
         if(request.timeUnit != null) putExtra("TIME_UNIT", request.timeUnit.value)
         if(request.maxGeoAgeMillis != null) putExtra("MAX_GEO_AGE_MILLIS", request.maxGeoAgeMillis.toLongOrNull())
+        if(request.appsSplitTunneling != null) putExtra("APPS_SPLIT_TUNNELING", request.appsSplitTunneling)
+        if(request.vpnServiceNotificationTitle != null) putExtra("NOTIFICATION_TITLE", request.vpnServiceNotificationTitle)
+        if(request.vpnServiceNotificationContent != null) putExtra("NOTIFICATION_CONTENT", request.vpnServiceNotificationContent)
+        if(request.vpnServiceNotificationStatuses != null) putExtra("NOTIFICATION_STATUSES", request.vpnServiceNotificationStatuses)
         setAction("START_VPN")
         setPackage(context.packageName)
       }
