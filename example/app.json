@@ -20,6 +20,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "net.libxray.example",
+      "launchMode": "singleTask",
       "permissions": [
         "INTERNET",
         "FOREGROUND_SERVICE",

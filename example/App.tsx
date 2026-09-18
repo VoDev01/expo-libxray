@@ -1,3 +1,4 @@
+import { Paths } from 'expo-file-system';
 import ExpoLibxray, {
   LibxrayConfigBuilder,
   PingBatchItem,
@@ -5,21 +6,50 @@ import ExpoLibxray, {
   RunXrayRequest,
   TimeUnit,
 } from 'expo-libxray';
-import { useState } from 'react';
-import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Paths } from 'expo-file-system';
+import { EventSubscription, EventEmitter } from 'expo-modules-core';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const xrayLink =
   'vless://1ceed667-7895-4750-99aa-fe2d7dd91c8d@85.192.60.109:8443?encryption=none&extra=%7B%22mode%22%3A%22stream-up%22%2C%22xPaddingBytes%22%3A%22100-1000%22%7D&fp=chrome&host=dl.google.com&mode=stream-up&path=%2Fchrome%2Fupdate&pbk=Y_h7Eekek0kE78qYrlrhbotdEgsf2NgNer3TALAyXzM&security=reality&sid=ed11541a6dbfa616&sni=youtu.be&spx=%2Fe00230f58dd174f&type=xhttp&x_padding_bytes=100-1000#VLESS%20REALITY%20XHTTP-w8vou5sxlt';
 
 export default function App() {
   const [text, setText] = useState<string>('Hello world!');
+
+  const [vpnState, setVpnState] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'>(
+    'DISCONNECTED'
+  );
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const subscription = ExpoLibxray.addListener(
+      'onVpnStatusChange',
+      (event: { status: string; error?: string }) => {
+        console.log('Received VPN status:', event.status);
+
+        if (event.status === 'CONNECTED') {
+          setVpnState('CONNECTED');
+        } else if (event.status === 'ERROR') {
+          setVpnState('ERROR');
+          setErrorMessage(event.error || 'Uknown error');
+        }
+      }
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.container}>
         <Text style={styles.header}>Module API Example</Text>
         <Group name="Test VPN connection protocols">
           <Text>{text}</Text>
+          <Text>Статус: {vpnState}</Text>
+          {vpnState === 'CONNECTING' && <ActivityIndicator />}
+          {vpnState === 'ERROR' && <Text>Ошибка: {errorMessage}</Text>}
           <Button
             title="Start VLESS + Reality"
             onPress={() => {
@@ -27,6 +57,7 @@ export default function App() {
                 setText(text);
               });
             }}
+            disabled={vpnState === 'CONNECTING' || vpnState === 'CONNECTED'}
           />
           <Button
             title="Test Xray Config"
@@ -161,17 +192,36 @@ async function startXrayVless(setText: (text: string) => void) {
     const responseObj = JSON.parse(resp);
 
     if (responseObj.success && responseObj.data) {
-      const config = buildConfig(responseObj.data, appFilesDir.uri.replace('file://', ''));
+      let xrayConfigData = responseObj.data;
+
+      if (typeof xrayConfigData === 'string' && xrayConfigData.trim().startsWith('[')) {
+        const parsedArray = JSON.parse(xrayConfigData);
+        if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+          xrayConfigData = JSON.stringify(parsedArray[0]);
+        }
+      }
+
+      const config = buildConfig(xrayConfigData, appFilesDir.uri.replace('file://', ''));
+
+      let finalConfigJson = config;
+      if (config.trim().startsWith('[')) {
+        const arr = JSON.parse(config);
+        finalConfigJson = JSON.stringify(arr[0]);
+      }
 
       const result = await ExpoLibxray.runXray({
-        xrayJson: config,
+        xrayJson: finalConfigJson,
         geoIpUrl: undefined,
         geoSiteUrl: undefined,
         downloadEvery: 30n.toString(),
         timeUnit: TimeUnit.SECONDS,
         maxGeoAgeMillis: '30000',
+        appsSplitTunneling: undefined,
         vpnServiceErrorLocalized: undefined,
         notificationErrorLocalized: undefined,
+        vpnServiceNotificationTitle: "VPN service notification",
+        vpnServiceNotificationContent: 'Status text:',
+        vpnServiceNotificationStatus: { connected: "Connected successfully", error: "Internal service error", waiting: "Waiting..." }
       });
       setText(result.success ? 'Connected with VLESS' : 'Fail');
     } else {
