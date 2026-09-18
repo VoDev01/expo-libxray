@@ -147,41 +147,6 @@ function buildConfig(initConfig: string, appFilesDir: string) {
       ],
       'UseIPv4'
     )
-    .setRouting(
-      [
-        {
-          type: 'field',
-          network: 'tcp,udp',
-          inboundTag: ['SOCKS LOCAL'],
-          outboundTag: 'VLESS TCP REALITY',
-        },
-        {
-          type: 'field',
-          inboundTag: ['SOCKS LOCAL'],
-          outboundTag: 'dns-out',
-          port: 53,
-        },
-        {
-          type: 'field',
-          domain: ['geosite:category-ads-all'],
-          inboundTag: ['SOCKS LOCAL'],
-          outboundTag: 'block',
-        },
-        {
-          type: 'field',
-          outboundTag: 'direct',
-          inboundTag: ['SOCKS LOCAL'],
-          protocol: ['bittorrent'],
-        },
-        {
-          type: 'field',
-          domain: ['geosite:ru-available-only-inside'],
-          inboundTag: ['SOCKS LOCAL'],
-          outboundTag: 'direct',
-        },
-      ],
-      'AsIs'
-    )
     .build();
 }
 
