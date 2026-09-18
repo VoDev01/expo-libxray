@@ -238,12 +238,16 @@ class XrayVpnService : VpnService() {
                                             }
                                         }
                                     }
-
+                                    
+                                    if (!geoIpFile.exists() && !geoSiteFile.exists()) 
+                                        throw Exception("Failed to receive geo files.")
                                     startVpn(configJson, appsSplitTunneling, notificationStatuses)
                                 }
                             }
                         } catch(e: Exception) {
                             Log.e(TAG, e.message ?: "Uknown error")
+                            stopXray()
+                            START_NOT_STICKY
                         }
                     }
 
@@ -362,15 +366,23 @@ class XrayVpnService : VpnService() {
     }
 
     private suspend fun startProxy(fd: Int, notificationStatuses: HashMap<String, String>?) {
-        scope.launch {
-            try {
-                sendVpnStatus("CONNECTING")
-                if(!TProxyService.TProxyIsRunning())
-                {
+        sendVpnStatus("CONNECTING")
+        if(!TProxyService.TProxyIsRunning())
+        {
+            scope.launch {
+                try {
                     logThread("Starting tun2socks")
                     val socksConf = File(this@XrayVpnService.filesDir, "tun2socks.yaml")
-                    TProxyService.TProxyStartService(socksConf.absolutePath, fd)    
+                    TProxyService.TProxyStartService(socksConf.absolutePath, fd)
+                } catch (e: Exception) {
+                    Log.e(TAG, e.message ?: "Unknown error")
+                    stopXray()
                 }
+            }
+        }
+
+        scope.launch {
+            try {
                 logThread("Starting xray")
                 if(cachedConfigJsonString == null) throw Exception("Unable to start xray: config null.")
                                 
@@ -380,7 +392,6 @@ class XrayVpnService : VpnService() {
                 for(dnsIp in dnsIps) {
                     LibXray.setDNS(dialerController, "$dnsIp:$dnsPort")
                 }
-                cachedConfigJsonString = setFd(cachedConfigJsonString!!, fd)
 
                 val request = InvokeRequest(
                     method = XrayMethod.RUN_XRAY,

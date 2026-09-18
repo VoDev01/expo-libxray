@@ -28,7 +28,9 @@ export default function App() {
         console.log('Received VPN status:', event.status);
 
         if (event.status === 'CONNECTED') {
-          setVpnState('CONNECTED');
+          setVpnState(event.status);
+        } else if (event.status === 'DISCONNECTED'){
+          setVpnState(event.status);
         } else if (event.status === 'ERROR') {
           setVpnState('ERROR');
           setErrorMessage(event.error || 'Uknown error');
@@ -48,8 +50,6 @@ export default function App() {
         <Group name="Test VPN connection protocols">
           <Text>{text}</Text>
           <Text>Статус: {vpnState}</Text>
-          {vpnState === 'CONNECTING' && <ActivityIndicator />}
-          {vpnState === 'ERROR' && <Text>Ошибка: {errorMessage}</Text>}
           <Button
             title="Start VLESS + Reality"
             onPress={() => {

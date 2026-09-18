@@ -7,5 +7,5 @@ socks5:
   udp: 'udp'
 misc:
   log-file: stdout
-  log-level: debug
+  log-level: warning
   limit-nofile: 65535

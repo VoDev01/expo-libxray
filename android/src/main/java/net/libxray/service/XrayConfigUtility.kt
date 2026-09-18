@@ -3,7 +3,7 @@ package net.libxray.service
 import org.json.JSONArray
 import org.json.JSONObject
 
-fun setFd(
+fun setXrayFd(
     config: String,
     fd: Int
 ): String {
