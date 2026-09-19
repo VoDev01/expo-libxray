@@ -176,11 +176,6 @@ async function startXrayVless(setText: (text: string) => void) {
 
       const result = await ExpoLibxray.runXray({
         xrayJson: finalConfigJson,
-        geoIpUrl: undefined,
-        geoSiteUrl: undefined,
-        downloadEvery: 30n.toString(),
-        timeUnit: TimeUnit.SECONDS,
-        maxGeoAgeMillis: '30000',
         appsSplitTunneling: undefined,
         vpnServiceErrorLocalized: undefined,
         notificationErrorLocalized: undefined,

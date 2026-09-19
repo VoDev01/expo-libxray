@@ -37,38 +37,7 @@ const withAndroidPlugin: ConfigPlugin = (config) => {
       ],
     };
 
-    const remoteWorkerService = {
-      $: {
-        'android:name': 'androidx.work.multiprocess.RemoteWorkerService',
-        'android:exported': 'false',
-        'android:process': ':xray_vpn',
-      },
-    };
-
     mainApplication.service.push(xrayService as any);
-    mainApplication.service.push(remoteWorkerService as any);
-
-    if (!mainApplication.provider) {
-      mainApplication.provider = [];
-    }
-
-    mainApplication.provider.push({
-      $: {
-        'android:name': 'androidx.startup.InitializationProvider',
-        'android:authorities': '${applicationId}.androidx-startup',
-        'android:exported': 'false',
-        'tools:node': 'merge',
-      },
-      'meta-data': [
-        {
-          $: {
-            'android:name': 'androidx.work.WorkManagerInitializer',
-            'android:value': 'androidx.startup',
-            'tools:node': 'remove',
-          },
-        },
-      ],
-    });
 
     return modConfig;
   });
