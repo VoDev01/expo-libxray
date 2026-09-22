@@ -19,10 +19,9 @@ import net.libxray.service.XrayVpnService
 import net.libxray.model.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import androidx.work.*
-import net.libxray.workers.WorkManagerInitializationProvider
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
+import android.util.Log
 
 class ExpoLibxrayModule : Module() {
   private var vpnDeferred: CompletableDeferred<Boolean>? = null
@@ -58,8 +57,6 @@ class ExpoLibxrayModule : Module() {
     }
 
     OnCreate {
-      WorkManagerInitializationProvider.initialize(context)
-
       val filter = IntentFilter("net.libxray.VPN_STATUS")
       context.registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
     }
@@ -68,7 +65,7 @@ class ExpoLibxrayModule : Module() {
         try {
           context.unregisterReceiver(statusReceiver)
         } catch (e: Exception) {
-          
+          Log.e("ExpoLibxrayModule", "Unable to unregister status receiver: $e")
         }
     }
 
@@ -100,11 +97,6 @@ class ExpoLibxrayModule : Module() {
 
       val intent = Intent(context, XrayVpnService::class.java).apply {
         putExtra("CONFIG_JSON", request.xrayJson)
-        if(request.geoIpUrl != null) putExtra("GEOIP_URL", request.geoIpUrl)
-        if(request.geoSiteUrl != null) putExtra("GEOSITE_URL", request.geoSiteUrl)
-        if(request.downloadEvery != null) putExtra("DOWNLOAD_EVERY", request.downloadEvery.toLongOrNull())
-        if(request.timeUnit != null) putExtra("TIME_UNIT", request.timeUnit.value)
-        if(request.maxGeoAgeMillis != null) putExtra("MAX_GEO_AGE_MILLIS", request.maxGeoAgeMillis.toLongOrNull())
         if(request.appsSplitTunneling != null) putExtra("APPS_SPLIT_TUNNELING", request.appsSplitTunneling)
         if(request.vpnServiceNotificationTitle != null) putExtra("NOTIFICATION_TITLE", request.vpnServiceNotificationTitle)
         if(request.vpnServiceNotificationContent != null) putExtra("NOTIFICATION_CONTENT", request.vpnServiceNotificationContent)
@@ -146,8 +138,10 @@ class ExpoLibxrayModule : Module() {
       val intent = Intent(context, XrayVpnService::class.java).apply {
         setAction("STOP_VPN")
         setPackage(context.packageName)
+        addFlags(Intent.FLAG_FROM_BACKGROUND)
+        addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
       }
-      context.startService(intent)
+      context.startForegroundService(intent)
       return@AsyncFunction true
     }
 

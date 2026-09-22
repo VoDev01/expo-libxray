@@ -83,16 +83,6 @@ data class RunXrayRequest(
     @Field
     val xrayJson: String,
     @Field
-    val geoIpUrl: String?,
-    @Field
-    val geoSiteUrl: String?,
-    @Field
-    val downloadEvery: String?,
-    @Field
-    val timeUnit: JsTimeUnit?,
-    @Field
-    val maxGeoAgeMillis: String?,
-    @Field
     val appsSplitTunneling: Array<String>?,
     @Field
     val notificationErrorLocalized: String?,

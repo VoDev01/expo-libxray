@@ -1,6 +1,6 @@
 {
   "name": "expo-libxray",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "An Expo library to help the developers use Xray core.",
   "keywords": [
     "react-native",

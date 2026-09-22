@@ -28,12 +28,8 @@ import org.json.JSONObject
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import net.libxray.model.*
-import net.libxray.workers.GeoWorkManager
 import java.util.concurrent.TimeUnit
-import androidx.work.*
-import androidx.work.multiprocess.RemoteWorkManager
 import kotlinx.coroutines.guava.await
-import net.libxray.workers.WorkManagerInitializationProvider
 import android.content.Intent
 import android.app.PendingIntent
 import android.os.IBinder
@@ -67,9 +63,6 @@ class XrayVpnService : VpnService() {
     private val dnsPort = "53"
     private var isRunning = false
 
-    private lateinit var geoWorkManager: GeoWorkManager
-    private lateinit var remoteWorkManager: RemoteWorkManager
-
     private var appsSplitTunneling: Array<String>? = null
     private var notificationStatuses: HashMap<String, String>? = null
     private var notificationTitle: String = "VPN Connection"
@@ -86,10 +79,6 @@ class XrayVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-
-        WorkManagerInitializationProvider.initialize(this)
-        remoteWorkManager = RemoteWorkManager.getInstance(this)
-        geoWorkManager = GeoWorkManager(remoteWorkManager)
     }
 
     private fun logThread(name: String) {
@@ -159,28 +148,16 @@ class XrayVpnService : VpnService() {
         if (intent == null) return START_NOT_STICKY
 
         val action = intent?.action
-
-        val geoIpFile = File(this.filesDir.absolutePath, "geoip.dat")
-        val geoSiteFile = File(this.filesDir.absolutePath, "geosite.dat")
-
-        val geoIpUrl = intent?.getStringExtra("GEOIP_URL") ?: 
-            "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat"
-        val geoSiteUrl = intent?.getStringExtra("GEOSITE_URL") ?: 
-            "https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat"
-        val downloadEvery = intent?.getLongExtra("DOWNLOAD_EVERY", 1L) ?: 1L
-        val timeUnitStr = intent?.getStringExtra("TIME_UNIT")
-        val timeUnit = if(timeUnitStr == null) TimeUnit.HOURS else TimeUnit.valueOf(timeUnitStr)
-        val maxGeoAgeMillis = intent?.getLongExtra("MAX_GEO_AGE_MILLIS", 3600000L) ?: 3600000L
-
-        appsSplitTunneling = intent?.getStringArrayExtra("APPS_SPLIT_TUNNELING")
-        notificationTitle = intent?.getStringExtra("NOTIFICATION_TITLE") ?: "VPN Connection"
-        notificationContent = intent?.getStringExtra("NOTIFICATION_CONTENT") ?: "Status: "
-        notificationStatuses = intent?.getSerializableExtra("NOTIFICATION_STATUSES", HashMap::class.java) as? HashMap<String, String>
         
         return when(action) {
             "START_VPN" -> {
                 if(isRunning) START_STICKY
                 else {
+                    appsSplitTunneling = intent?.getStringArrayExtra("APPS_SPLIT_TUNNELING")
+                    notificationTitle = intent?.getStringExtra("NOTIFICATION_TITLE") ?: "VPN Connection"
+                    notificationContent = intent?.getStringExtra("NOTIFICATION_CONTENT") ?: "Status: "
+                    notificationStatuses = intent?.getSerializableExtra("NOTIFICATION_STATUSES", HashMap::class.java) as? HashMap<String, String>
+
                     val configJson = intent.getStringExtra("CONFIG_JSON") ?: ""
                     val currentStatuses = notificationStatuses
                     val waitingText = if (currentStatuses != null) {
@@ -199,51 +176,7 @@ class XrayVpnService : VpnService() {
 
                     scope.launch {
                         try {
-                            geoWorkManager.schedulePeriodicDownload(
-                                geoIpUrl = geoIpUrl,
-                                geoSiteUrl = geoSiteUrl,
-                                downloadEvery = downloadEvery,
-                                timeUnit = timeUnit,
-                                maxGeoAgeMillis = maxGeoAgeMillis
-                            )
-
-                            val scheduledWorkInfos = remoteWorkManager
-                                .getWorkInfos(WorkQuery.fromUniqueWorkNames("GeoFilesUpdate"))
-                                .await()
-
-                            if(scheduledWorkInfos != null) {
-                                val scheduledWorkInfo = scheduledWorkInfos.first()
-
-                                if (scheduledWorkInfo.state == WorkInfo.State.ENQUEUED || scheduledWorkInfo.state == WorkInfo.State.RUNNING) {
-                                    if (!geoIpFile.exists() && !geoSiteFile.exists()){
-                                        geoWorkManager.immediateUpdate(
-                                            geoIpUrl = geoIpUrl,
-                                            geoSiteUrl = geoSiteUrl,
-                                            maxGeoAgeMillis = maxGeoAgeMillis
-                                        )
-
-                                        val workInfos = remoteWorkManager
-                                            .getWorkInfos(WorkQuery.fromUniqueWorkNames("GeoFilesImmediateUpdate"))
-                                            .await()
-
-                                        if(workInfos != null) {
-                                            val workInfo = workInfos.first()
-                                            
-                                            if (workInfo.state == WorkInfo.State.SUCCEEDED) {
-                                                if (!geoIpFile.exists() && !geoSiteFile.exists()) 
-                                                    throw Exception("Failed to receive geo files.")
-                                            }
-                                            else if(workInfo.state == WorkInfo.State.FAILED) {
-                                                throw Exception("Worker ${workInfo.id} has failed. Message: ${workInfo.outputData}")
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (!geoIpFile.exists() && !geoSiteFile.exists()) 
-                                        throw Exception("Failed to receive geo files.")
-                                    startVpn(configJson, appsSplitTunneling, notificationStatuses)
-                                }
-                            }
+                            startVpn(configJson, appsSplitTunneling, notificationStatuses)
                         } catch(e: Exception) {
                             Log.e(TAG, e.message ?: "Uknown error")
                             stopXray()

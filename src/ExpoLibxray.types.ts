@@ -51,29 +51,6 @@ export interface RunXrayRequest {
    */
   xrayJson: string;
   /**
-   * Optional URL for GeoIP.
-   */
-  geoIpUrl: string | undefined;
-  /**
-   * Optional URL for GeoSite.
-   */
-  geoSiteUrl: string | undefined;
-  /**
-   * Optional download frequency of geo files.
-   * @default 1
-   */
-  downloadEvery: string | undefined;
-  /**
-   * Optional time unit for download frequency.
-   * @default TimeUnit.HOURS
-   */
-  timeUnit: TimeUnit | undefined;
-  /**
-   * Optional maximum age of geo files in milliseconds.
-   * @default 1 hour
-   */
-  maxGeoAgeMillis: string | undefined;
-  /**
    * Apps package names that need to bypass VPN tunnel
    */
   appsSplitTunneling: string[] | undefined;
