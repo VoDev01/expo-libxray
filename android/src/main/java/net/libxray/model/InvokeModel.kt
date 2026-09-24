@@ -47,7 +47,7 @@ enum class XrayMethod {
 
 @Serializable
 data class InvokeRequest<T> (
-    val apiVersion: Int = 2,
+    val apiVersion: Int = 3,
     val method: XrayMethod,
     val payload: T
 )
@@ -96,7 +96,7 @@ data class RunXrayResponse(
     @Field
     val success: Boolean,
     @Field
-    val error: String?
+    val error: String? = null
 ) : Record
 
 @Serializable
@@ -111,7 +111,9 @@ data class PingBatchRequest(
     @Field
     val timeout: Int,
     @Field
-    val url: String?
+    val url: String?,
+    @Field
+    val locationUrl: String?
 ) : Record 
 
 @Serializable
@@ -133,9 +135,13 @@ data class PingBatchItemResponse(
     @Field
     val success: Boolean,
     @Field
-    val delay: Long?,
+    val delay: Long,
     @Field
-    val error: String?
+    val error: String? = null,
+    @Field
+    val locationJson: String? = null,
+    @Field
+    val locationError: String? = null
 ) : Record
 
 @Serializable

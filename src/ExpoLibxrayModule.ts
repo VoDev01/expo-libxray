@@ -18,9 +18,16 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
   /**
    * Converts share links to Xray JSON format.
    * @param links - The share links to convert.
-   * @returns A promise that resolves to generic json string, which contains InvokeResponse object with success, data, error fields.
+   * @returns A promise that resolves to json string, which contains InvokeResponse object with success, data, error fields.
    */
   convertShareLinksToXrayJson(links: string): Promise<string>;
+
+  /**
+   * Converts Xray JSON to share link.
+   * @param xrayJson - The Xray JSON to convert.
+   * @returns A promise that resolves to json string, which contains InvokeResponse object with success, data, error fields.
+   */
+  convertXrayJsonToShareLinks(xrayJson: string): Promise<string>;
 
   /**
    * Runs Xray with the provided request.

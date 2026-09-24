@@ -26,6 +26,7 @@ export interface PingBatchRequest {
    * URL for the ping request.
    */
   url: string | undefined;
+  locationUrl: string | undefined;
 }
 
 /**
@@ -117,4 +118,6 @@ export interface PingBatchItemResponse {
    * Optional error message if the operation failed.
    */
   error: string | undefined;
+  locationJson: string | undefined;
+  locationError: string | undefined;
 }

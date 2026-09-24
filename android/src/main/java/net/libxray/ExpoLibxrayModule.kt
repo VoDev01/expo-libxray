@@ -84,6 +84,14 @@ class ExpoLibxrayModule : Module() {
       return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
+    AsyncFunction("convertXrayJsonToShareLinks") { xrayJson: String ->
+      val request = InvokeRequest(
+        method = XrayMethod.CONVERT_JSON_TO_SHARE_LINKS,
+        payload = ConvertXrayJsonRequest(xrayJson)
+      )
+      return@AsyncFunction LibXray.invoke(json.encodeToString(request))
+    }
+
 
     AsyncFunction("runXray") { request: RunXrayRequest ->
       val activity = appContext.currentActivity
@@ -176,7 +184,9 @@ class ExpoLibxrayModule : Module() {
             PingBatchItemResponse(
               success = false,
               delay = 0L,
-              error = "Request should not contain more than 5 configurations."
+              error = "Request should not contain more than 5 configurations.",
+              locationJson = null,
+              locationError = null
             )
           )
         )
