@@ -6,12 +6,11 @@ import ExpoLibxray, {
   RunXrayRequest,
   TimeUnit,
 } from 'expo-libxray';
-import { EventSubscription, EventEmitter } from 'expo-modules-core';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const xrayLink =
-  'vless://1ceed667-7895-4750-99aa-fe2d7dd91c8d@85.192.60.109:8443?encryption=none&extra=%7B%22mode%22%3A%22stream-up%22%2C%22xPaddingBytes%22%3A%22100-1000%22%7D&fp=chrome&host=dl.google.com&mode=stream-up&path=%2Fchrome%2Fupdate&pbk=Y_h7Eekek0kE78qYrlrhbotdEgsf2NgNer3TALAyXzM&security=reality&sid=ed11541a6dbfa616&sni=youtu.be&spx=%2Fe00230f58dd174f&type=xhttp&x_padding_bytes=100-1000#VLESS%20REALITY%20XHTTP-w8vou5sxlt';
+  'vless://863690dc-5888-484d-8e16-efe678fd90e2@185.155.8.159:7858?mode=auto&path=%2Fphx&security=tls&encryption=none&extra=%7B%22scMaxEachPostBytes%22%3A%224000000%22%2C%22scMinPostsIntervalMs%22%3A%225%22%2C%22downloadSettings%22%3A%7B%22address%22%3A%22nw.amirport.sbs%22%2C%22port%22%3A7858%2C%22network%22%3A%22xhttp%22%2C%22security%22%3A%22tls%22%2C%22tlsSettings%22%3A%7B%22serverName%22%3A%22nw.amirport.sbs%22%7D%2C%22xhttpSettings%22%3A%7B%22mode%22%3A%22auto%22%2C%22path%22%3A%22%2Fphx%22%2C%22extra%22%3A%7B%22scMaxEachPostBytes%22%3A%224000000%22%2C%22scMinPostsIntervalMs%22%3A%225%22%7D%7D%7D%7D&type=xhttp&sni=nw.amirport.sbs&fp=firefox#%F0%9F%8C%90%20Anycast-IP%20%7C%20%F0%9F%87%B3%F0%9F%87%B1%20%F0%9F%87%B7%F0%9F%87%B4%20%7C%20%5BBL%5D';
 
 export default function App() {
   const [text, setText] = useState<string>('Hello world!');
@@ -49,9 +48,9 @@ export default function App() {
         <Text style={styles.header}>Module API Example</Text>
         <Group name="Test VPN connection protocols">
           <Text>{text}</Text>
-          <Text>Статус: {vpnState}</Text>
+          <Text>Status: {vpnState}</Text>
           <Button
-            title="Start VLESS + Reality"
+            title="Start Xray Core"
             onPress={() => {
               startXrayVless((text) => {
                 setText(text);
@@ -63,6 +62,14 @@ export default function App() {
             title="Test Xray Config"
             onPress={() => {
               testXrayConfig((text) => {
+                setText(text);
+              });
+            }}
+          />
+          <Button
+            title="Convert link to json"
+            onPress={() => {
+              convertShareLinksToXrayJson((text) => {
                 setText(text);
               });
             }}
@@ -116,15 +123,6 @@ function buildConfig(initConfig: string, appFilesDir: string) {
         {
           tag: 'VLESS TCP REALITY',
           sendThrough: '0.0.0.0',
-          streamSettings: {
-            xhttpSettings: {
-              path: '/chrome/update',
-              mode: 'stream-up',
-              extra: {
-                xPaddingBytes: '100-1000',
-              },
-            },
-          },
         },
       ],
       ['streamSettings.realitySettings.password', 'streamSettings.realitySettings.port']
@@ -181,14 +179,23 @@ async function startXrayVless(setText: (text: string) => void) {
         notificationErrorLocalized: undefined,
         vpnServiceNotificationTitle: "VPN service notification",
         vpnServiceNotificationContent: 'Status text:',
-        vpnServiceNotificationStatus: { connected: "Connected successfully", error: "Internal service error", waiting: "Waiting..." }
+        vpnServiceNotificationStatus: { connected: "Connected successfully", error: "Internal service error", waiting: "Waiting...", 'connecting': "Connecting" }
       });
       setText(result.success ? 'Connected with VLESS' : 'Fail');
     } else {
-      setText(`Ошибка конвертации: ${responseObj.error}`);
+      setText(`Converting error: ${responseObj.error}`);
     }
   } catch (error) {
     setText(`Ошибка при запуске Xray: ${(error as Error).message}`);
+  }
+}
+
+async function convertShareLinksToXrayJson(setText: (text: string) => void) {
+  try {
+    const resp = JSON.parse(await ExpoLibxray.convertShareLinksToXrayJson(xrayLink));
+    setText(resp.success ? 'Success' : resp.error);
+  } catch (error) {
+    setText(`Error converting links to Xray json: ${(error as Error).message}`);
   }
 }
 
@@ -210,7 +217,7 @@ async function testXrayConfig(setText: (text: string) => void) {
     if (responseObj.success && responseObj.data) {
       const config = buildConfig(responseObj.data, appFilesDir.uri.replace('file://', ''));
 
-      const result = await ExpoLibxray.testXray(config);
+      const result = JSON.parse(await ExpoLibxray.testXray(config));
       setText(!result.success ? (result.error ?? 'Uknown error') : 'Valid configuration');
     } else {
       setText(`Ошибка конвертации: ${responseObj.error}`);
@@ -238,6 +245,7 @@ async function pingBatch(setText: (text: string) => void) {
         ],
         timeout: 5,
         url: 'https://microsoft.com',
+        locationUrl: 'https://google.com'
       };
 
       const result = await ExpoLibxray.pingBatch(batchRequest);
