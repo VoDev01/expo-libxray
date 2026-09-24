@@ -70,11 +70,6 @@ data class ConvertXrayJsonRequest(
 )
 
 @Serializable
-data class ConvertXrayJsonResponse(
-    val links: String
-)
-
-@Serializable
 data class RunXrayInvokeRequest(
     val xrayJson: String
 )
@@ -108,16 +103,6 @@ data class RunXrayResponse(
 data class TestXrayRequest(
     val xrayJson: String
 )
-
-@Serializable
-data class TestXrayResponse(
-    @Field
-    val success: Boolean,
-    @Field
-    val data: String?,
-    @Field
-    val error: String?
-) : Record
 
 @Serializable
 data class PingBatchRequest(

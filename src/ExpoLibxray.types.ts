@@ -11,24 +11,6 @@ export enum TimeUnit {
 }
 
 /**
- * Represents generic module InvokeResponse
- */
-export interface InvokeResponse {
-  /**
-   * Indicates whether the operation was successful.
-   */
-  success: boolean;
-  /**
-   * Response data
-   */
-  data: any;
-  /**
-   * Optional error message if the operation failed.
-   */
-  error: string | undefined;
-}
-
-/**
  * Represents a request to batch ping configurations.
  */
 export interface PingBatchRequest {
@@ -131,24 +113,6 @@ export interface PingBatchItemResponse {
    * Delay in milliseconds.
    */
   delay: bigint | undefined;
-  /**
-   * Optional error message if the operation failed.
-   */
-  error: string | undefined;
-}
-
-/**
- * Represents the response for testing Xray.
- */
-export interface TestXrayResponse {
-  /**
-   * Indicates whether the operation was successful.
-   */
-  success: boolean;
-  /**
-   * Optional data from the test.
-   */
-  data: string | undefined;
   /**
    * Optional error message if the operation failed.
    */

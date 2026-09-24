@@ -81,8 +81,7 @@ class ExpoLibxrayModule : Module() {
         method = XrayMethod.CONVERT_SHARE_LINKS_TO_JSON,
         payload = ConvertLinksRequest(links)
       )
-      val response = json.decodeFromString<InvokeResponse<String?>>(LibXray.invoke(json.encodeToString(request)))
-      return@AsyncFunction response
+      return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
 
@@ -159,8 +158,7 @@ class ExpoLibxrayModule : Module() {
         method = XrayMethod.TEST_XRAY,
         payload = ConvertXrayJsonRequest(configJson)
       )
-      val response = json.decodeFromString<TestXrayResponse>(LibXray.invoke(json.encodeToString(request)))
-      return@AsyncFunction response
+      return@AsyncFunction LibXray.invoke(json.encodeToString(request))
     }
 
     AsyncFunction("xrayVersion") {

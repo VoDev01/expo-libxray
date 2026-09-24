@@ -1,11 +1,9 @@
 import { NativeModule, requireNativeModule } from 'expo';
 import {
-  InvokeResponse,
   PingBatchRequest,
   PingBatchResponse,
   RunXrayRequest,
   RunXrayResponse,
-  TestXrayResponse,
 } from './ExpoLibxray.types';
 
 export type VpnStatusEvent = {
@@ -20,9 +18,9 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
   /**
    * Converts share links to Xray JSON format.
    * @param links - The share links to convert.
-   * @returns A promise that resolves to an InvokeResponse with data parameter representing raw Xray JSON string.
+   * @returns A promise that resolves to generic json string, which contains InvokeResponse object with success, data, error fields.
    */
-  convertShareLinksToXrayJson(links: string): Promise<InvokeResponse>;
+  convertShareLinksToXrayJson(links: string): Promise<string>;
 
   /**
    * Runs Xray with the provided request.
@@ -60,9 +58,9 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
   /**
    * Tests Xray configuration.
    * @param configJson - The configuration JSON for testing.
-   * @returns A promise that resolves to a TestXrayResponse object.
+   * @returns A promise that resolves to generic json string, which contains a generic InvokeResponse object with success, data, error fields.
    */
-  testXray(configJson: string): Promise<TestXrayResponse>;
+  testXray(configJson: string): Promise<string>;
 
   /**
    * Gets the version of Xray.
