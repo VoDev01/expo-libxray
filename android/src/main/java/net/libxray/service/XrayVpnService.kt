@@ -300,6 +300,10 @@ class XrayVpnService : VpnService() {
 
     private suspend fun startProxy(fd: Int, notificationStatuses: HashMap<String, String>?) {
         sendVpnStatus("CONNECTING")
+        updateNotification(
+            NOTIFICATION_ID, 
+            notificationStatuses?.get("connecting") ?: "Connecting...",
+        )
         if(!TProxyService.TProxyIsRunning())
         {
             scope.launch {

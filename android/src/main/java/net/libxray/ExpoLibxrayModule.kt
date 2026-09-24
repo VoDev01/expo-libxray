@@ -81,7 +81,8 @@ class ExpoLibxrayModule : Module() {
         method = XrayMethod.CONVERT_SHARE_LINKS_TO_JSON,
         payload = ConvertLinksRequest(links)
       )
-      return@AsyncFunction LibXray.invoke(json.encodeToString(request))
+      val response = json.decodeFromString<InvokeResponse<String?>>(LibXray.invoke(json.encodeToString(request)))
+      return@AsyncFunction response
     }
 
 
@@ -141,7 +142,7 @@ class ExpoLibxrayModule : Module() {
         addFlags(Intent.FLAG_FROM_BACKGROUND)
         addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
       }
-      context.startForegroundService(intent)
+      context.startService(intent)
       return@AsyncFunction true
     }
 

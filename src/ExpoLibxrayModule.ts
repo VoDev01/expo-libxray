@@ -1,5 +1,6 @@
 import { NativeModule, requireNativeModule } from 'expo';
 import {
+  InvokeResponse,
   PingBatchRequest,
   PingBatchResponse,
   RunXrayRequest,
@@ -19,9 +20,9 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
   /**
    * Converts share links to Xray JSON format.
    * @param links - The share links to convert.
-   * @returns A promise that resolves to a string representing the Xray JSON.
+   * @returns A promise that resolves to an InvokeResponse with data parameter representing raw Xray JSON string.
    */
-  convertShareLinksToXrayJson(links: string): Promise<string>;
+  convertShareLinksToXrayJson(links: string): Promise<InvokeResponse>;
 
   /**
    * Runs Xray with the provided request.
@@ -32,6 +33,12 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
 
   /**
    * Stops Xray.
+   * @returns A promise that resolves to a boolean indicating success.
+   */
+  stopXray(): Promise<boolean>;
+
+  /**
+   * Stops Xray .
    * @returns A promise that resolves to a boolean indicating success.
    */
   stopXray(): Promise<boolean>;

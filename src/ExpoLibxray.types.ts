@@ -11,6 +11,24 @@ export enum TimeUnit {
 }
 
 /**
+ * Represents generic module InvokeResponse
+ */
+export interface InvokeResponse {
+  /**
+   * Indicates whether the operation was successful.
+   */
+  success: boolean;
+  /**
+   * Response data
+   */
+  data: any;
+  /**
+   * Optional error message if the operation failed.
+   */
+  error: string | undefined;
+}
+
+/**
  * Represents a request to batch ping configurations.
  */
 export interface PingBatchRequest {
@@ -73,7 +91,8 @@ export interface RunXrayRequest {
   /**
    * Notification localized text statuses of notification
    */
-  vpnServiceNotificationStatus: Record<'waiting' | 'connected' | 'error', string> | undefined;
+  vpnServiceNotificationStatus:
+    Record<'waiting' | 'connected' | 'error' | 'connecting', string> | undefined;
 }
 
 /**
