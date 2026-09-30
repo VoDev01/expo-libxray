@@ -50,9 +50,9 @@ declare class ExpoLibxrayModule extends NativeModule<{}> {
 
   /**
    * Gets the current state of Xray.
-   * @returns A promise that resolves to a boolean indicating whether Xray is running.
+   * @returns A promise that resolves to json string, which contains InvokeResponse object with success, data, error fields.
    */
-  getXrayState(): Promise<boolean>;
+  getXrayState(): Promise<string>;
 
   /**
    * Pings multiple configurations in a batch.

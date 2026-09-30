@@ -61,7 +61,7 @@ class XrayVpnService : VpnService() {
         "8.8.8.8",
     )
     private val dnsPort = "53"
-    private var isRunning = false
+    internal var isRunning = false
 
     private var appsSplitTunneling: Array<String>? = null
     private var notificationStatuses: HashMap<String, String>? = null

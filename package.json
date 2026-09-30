@@ -1,6 +1,6 @@
 {
   "name": "expo-libxray",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "An Expo library to help the developers use Xray core. Libxray - v26.9.9",
   "keywords": [
     "react-native",
@@ -16,7 +16,7 @@
     "type": "git",
     "url": "git+https://github.com/VoDev01/expo-libxray.git"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "author": "VoDev01 <vodev1405@gmail.com> (https://github.com/VoDev01)",
   "type": "typescript",
   "main": "build/index.js",
@@ -63,3 +63,4 @@
     ]
   }
 }
+
